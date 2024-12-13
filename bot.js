@@ -97,11 +97,6 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
   const symbol = match[1];
   const number = parseInt(match[2], 10) || 0;
 
-  if (!isRecruitmentOpen) {
-    bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
-    return;
-  }
-
   // Создаём участника, если он ещё не зарегистрирован
   if (!participants[userId]) {
     participants[userId] = {
@@ -115,11 +110,23 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 
   if (symbol === '+') {
     // Проверяем, что сообщение содержит только "+" или "+число"
-    const plusPattern = /^\+\d*$/; // Регулярное выражение: "+" или "+число"
+    const plusPattern = /^\+\d*$/; // "+" или "+число"
     if (!plusPattern.test(msg.text.trim())) {
       return; // Игнорируем, если сообщение не соответствует формату
     }
 
+    const number =
+      msg.text.trim() === '+' ? 0 : parseInt(msg.text.slice(1), 10);
+
+    if (number === 0 && msg.text.trim() !== '+') {
+      bot.sendMessage(chatId, 'Нельзя добавить 0 человек.');
+      return;
+    }
+
+    if (!isRecruitmentOpen) {
+      bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+      return;
+    }
     // if (number > 5) {
     //   bot.sendMessage(
     //     chatId,
@@ -151,10 +158,23 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       }
     }
   } else if (symbol === '-') {
-    const plusPattern = /^\-\d*$/; // Регулярное выражение: "+" или "+число"
+    const plusPattern = /^\-\d*$/; // Регулярное выражение: "-" или "-число"
     if (!plusPattern.test(msg.text.trim())) {
       return; // Игнорируем, если сообщение не соответствует формату
     }
+
+    const number =
+      msg.text.trim() === '-' ? 0 : parseInt(msg.text.slice(1), 10);
+
+    if (number === 0 && msg.text.trim() !== '-') {
+      bot.sendMessage(chatId, 'Нельзя убрать 0 человек.');
+      return;
+    }
+    if (!isRecruitmentOpen) {
+      bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+      return;
+    }
+
     if (number > 0) {
       // Удаление друзей
       if (participant.invitedFriends < number) {
@@ -183,6 +203,10 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
     if (msg.text.trim() !== '?') {
       return; // Если это не строго "+", ничего не делаем
     }
+    if (!isRecruitmentOpen) {
+      bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+      return;
+    }
     // Изменение статуса на "Под вопросом"
     if (participant.status === 'Под Вопросом') {
       bot.sendMessage(chatId, `${userName}, ты уже под вопросом.`);
@@ -198,10 +222,15 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 
 // Обработка команды Состав
 bot.onText(/Состав/, (msg) => {
+  const chatId = msg.chat.id;
   const pattern = /^Состав$/;
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
+  }
+  if (!isRecruitmentOpen) {
+    bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+    return;
   }
   updateParticipantCount(msg.chat.id);
 });
