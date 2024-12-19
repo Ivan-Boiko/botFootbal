@@ -83,7 +83,7 @@ function updateParticipantCount(chatId) {
       'Внимание, количество участников составляет 15 человек!'
     );
   }
-  let total = statusList + `Итого: ${totalParticipants}`;
+  let total = statusList + `\n Итого: ${totalParticipants}`;
   return total;
 }
 
