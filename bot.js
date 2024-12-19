@@ -83,8 +83,8 @@ function updateParticipantCount(chatId) {
       'Внимание, количество участников составляет 15 человек!'
     );
   }
-
-  bot.sendMessage(chatId, statusList);
+  let total = statusList + `Итого: ${totalParticipants}`;
+  return total;
 }
 
 // Обработка команд +, -, ?
@@ -230,7 +230,7 @@ bot.onText(/Состав/, (msg) => {
     bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
     return;
   }
-  updateParticipantCount(msg.chat.id);
+  bot.sendMessage(chatId, updateParticipantCount());
 });
 
 // Обработка команды /info
