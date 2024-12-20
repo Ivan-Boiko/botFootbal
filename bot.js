@@ -60,19 +60,21 @@ bot.on('chat_join_request', handleChatMemberEvents);
 function updateParticipantCount(chatId) {
   let statusList = 'Состав:\n';
   let totalParticipants = 0;
+  let readyCounter = 0; // Счётчик для участников в составе
 
   for (let userId in participants) {
     const participant = participants[userId];
     const invitedFriends = participant.invitedFriends || 0;
 
     if (participant.status === 'Готов') {
+      readyCounter += 1; // Увеличиваем счётчик
       totalParticipants += 1 + invitedFriends; // Учитываем участника и его друзей
-      statusList += `${participant.name} — Готов (Позвал ${invitedFriends})\n`;
+      statusList += `${readyCounter}. ${participant.name} — Готов(а) ( Позвал(а) ${invitedFriends} )\n`;
     } else if (participant.status === 'Под Вопросом') {
       totalParticipants += invitedFriends; // Только друзья
-      statusList += `${participant.name} — Под Вопросом (Позвал ${invitedFriends})\n`;
+      statusList += `${participant.name} — Под Вопросом ( Позвал(а) ${invitedFriends} )\n`;
     } else if (invitedFriends > 0) {
-      statusList += `${participant.name} — Не участвует, но позвал ${invitedFriends}\n`;
+      statusList += `${participant.name} — Не участвует, но позвал(а) ${invitedFriends}\n`;
       totalParticipants += invitedFriends;
     }
   }
@@ -83,7 +85,8 @@ function updateParticipantCount(chatId) {
       'Внимание, количество участников составляет 15 человек!'
     );
   }
-  let total = statusList + `\n Итого: ${totalParticipants}`;
+
+  let total = statusList + `\nИтого: ${totalParticipants}`;
   return total;
 }
 
@@ -137,7 +140,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       if (number > 0) {
         // Добавление друзей, если статус "Готов"
         participant.invitedFriends += number;
-        bot.sendMessage(chatId, `${userName} позвал +${number}`);
+        bot.sendMessage(chatId, `${userName} позвал(а) +${number}`);
       } else {
         // Если просто "+" и статус "Готов", выводим сообщение
         bot.sendMessage(chatId, 'Ты уже в составе');
@@ -148,11 +151,11 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       if (number > 0) {
         // Добавление друзей
         participant.invitedFriends += number;
-        bot.sendMessage(chatId, `${userName} позвал +${number}`);
+        bot.sendMessage(chatId, `${userName} позвал(а) +${number}`);
       } else {
         // Запись в состав
         participant.status = 'Готов';
-        bot.sendMessage(chatId, `${userName} добавлен в состав.`);
+        bot.sendMessage(chatId, `${userName} добавлен(а) в состав.`);
       }
     }
   } else if (symbol === '-') {
@@ -184,7 +187,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       } else {
         // Уменьшение количества друзей
         participant.invitedFriends -= number;
-        bot.sendMessage(chatId, `${userName} сделал -${number}.`);
+        bot.sendMessage(chatId, `${userName} сделал(а) -${number}.`);
       }
     } else {
       // Удаление из состава
@@ -194,7 +197,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       } else {
         // Удаление пользователя из состава
         participant.status = 'Не участвует';
-        bot.sendMessage(chatId, `${userName} убран из состава.`);
+        bot.sendMessage(chatId, `${userName} убран(а) из состава.`);
       }
     }
   } else if (symbol === '?') {
@@ -210,7 +213,10 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       bot.sendMessage(chatId, `${userName}, ты уже под вопросом.`);
     } else {
       participant.status = 'Под Вопросом';
-      bot.sendMessage(chatId, `${userName} изменил статус на "Под Вопросом".`);
+      bot.sendMessage(
+        chatId,
+        `${userName} изменил(а) статус на "Под Вопросом".`
+      );
     }
   }
 
@@ -276,7 +282,7 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
   participants = {};
   bot.sendMessage(
     groupChatId,
-    'Набор на матч начался! Напиши "+", "-" или "?" для взаимодействия.'
+    'Набор на матч начался! Записывайтесь и зовите друзей!'
   );
 });
 
