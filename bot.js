@@ -289,7 +289,10 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
 schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 59 }, () => {
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
-  bot.sendMessage(groupChatId, 'Сбор завершён! Следующий набор будет в среду.');
+  bot.sendMessage(
+    groupChatId,
+    'Состав был сброшен! Следующий набор откроется  в среду в 12:00.'
+  );
 });
 
 function sendInfoMessage(msg) {
