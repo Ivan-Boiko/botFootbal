@@ -86,7 +86,8 @@ function updateParticipantCount(chatId) {
   }
 
   let total = statusList + `\nИтого: ${totalParticipants}`;
-  return total;
+
+  return { total, totalParticipants };
 }
 
 // Обработка команд +, -, ?
@@ -227,6 +228,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 bot.onText(/Состав/, (msg) => {
   const chatId = msg.chat.id;
   const pattern = /^Состав$/;
+  let updateParticipantCount = updateParticipantCount();
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
@@ -235,11 +237,27 @@ bot.onText(/Состав/, (msg) => {
     bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
     return;
   }
-  bot.sendMessage(chatId, updateParticipantCount());
+
+  bot.sendMessage(chatId, updateParticipantCount.totalParticipants);
 });
 
-// Обработка команды /info
-bot.onText(/Инструкция/, (msg) => {
+bot.onText(/Игроки/, (msg) => {
+  const chatId = msg.chat.id;
+  const pattern = /^Игроки$/;
+  let updateParticipantCount = updateParticipantCount();
+
+  if (!pattern.test(msg.text.trim())) {
+    return; // Игнорируем, если сообщение не соответствует формату
+  }
+  if (!isRecruitmentOpen) {
+    bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+    return;
+  }
+  bot.sendMessage(chatId, updateParticipantCount.total);
+});
+
+// Обработка команды Инструкция
+bot.onText(/Инфо/, (msg) => {
   const chatId = msg.chat.id;
   const pattern = /^Состав$/;
 
@@ -311,8 +329,9 @@ function sendInfoMessage(msg) {
 "+число" (напр., "+3") — добавить друзей.
 "-число" (напр., "-2") — убрать добавленных друзей.
 "?" — статус "Под вопросом".
-"/info" — информация о возможностях бота.
-"Состав" — посмотреть текущий состав.
+"Инфо" — информация о возможностях бота.
+"Состав" — посмотреть количество людей.
+"Игроки" — посмотреть общий состав.
   `;
   bot.sendMessage(chatId, infoMessage);
 }
