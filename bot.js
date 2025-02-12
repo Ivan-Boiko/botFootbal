@@ -239,7 +239,15 @@ bot.onText(/Состав/, (msg) => {
 });
 
 // Обработка команды /info
-bot.onText(/Инструкция/, sendInfoMessage);
+bot.onText(/Инструкция/, (msg) => {
+  const chatId = msg.chat.id;
+  const pattern = /^Состав$/;
+
+  if (!pattern.test(msg.text.trim())) {
+    return; // Игнорируем, если сообщение не соответствует формату
+  }
+  bot.sendMessage(chatId, sendInfoMessage());
+});
 
 // Административные команды
 bot.onText(/\/(start|close)/, async (msg, match) => {
