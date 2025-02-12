@@ -2,11 +2,11 @@ const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 
 // Токен бота
-const token = '6017031770:AAHXjg8tTHKf9YFcKgWsecXqr6M6PqriDZ8';
+const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = null;
+let groupChatId = 462397585;
 
 // Состояние бота и участники
 let isRecruitmentOpen = false;
@@ -29,8 +29,7 @@ function handleChatMemberEvents(msg) {
     newUsers.forEach((newUser) => {
       bot.sendMessage(
         chatId,
-        `Привет, ${newUser.first_name}! Добро пожаловать в группу!`,
-        sendInfoMessage(msg)
+        `Привет, ${newUser.first_name}! Добро пожаловать в группу!`
       );
     });
   }
@@ -234,7 +233,7 @@ bot.onText(/Состав/, (msg) => {
 });
 
 // Обработка команды /info
-bot.onText(/\/info/, sendInfoMessage);
+bot.onText(/Инструкция/, sendInfoMessage);
 
 // Административные команды
 bot.onText(/\/(start|close)/, async (msg, match) => {
@@ -290,14 +289,13 @@ function sendInfoMessage(msg) {
   const chatId = msg.chat.id;
   const infoMessage = `
 Добро пожаловать! ⚽
- Вот как работает бот:
-    1. Напиши "+" — чтобы записаться на матч.
-    2. Напиши "-" — чтобы отменить свою запись.
-    3. Напиши "+число" (например, "+3") — чтобы добавить друзей в состав.
-    4. Напиши "-число" (например, "-2") — чтобы убрать ранее добавленных друзей.
-    5. Напиши "?" — чтобы поставить статус "Под Вопросом".
-    6. Напиши "/info" — чтобы получить информацию о возможностях бота.
-    7. Напиши "Состав" — чтобы увидеть текущий состав участников.
+"+" — записаться на матч.
+"-" — отменить запись.
+"+число" (напр., "+3") — добавить друзей.
+"-число" (напр., "-2") — убрать добавленных друзей.
+"?" — статус "Под вопросом".
+"/info" — информация о возможностях бота.
+"Состав" — посмотреть текущий состав.
   `;
   bot.sendMessage(chatId, infoMessage);
 }
