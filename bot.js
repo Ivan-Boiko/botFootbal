@@ -1,16 +1,22 @@
 const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
+const date_fns = 'date-fns';
 
 // Токен бота
 const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
+const { nextWednesday, format } = require('date-fns');
 
 // Переменная для хранения groupChatId
 let groupChatId = 462397585;
-
 // Состояние бота и участники
 let isRecruitmentOpen = false;
 let participants = {};
+
+function getNextWednesday() {
+  const today = new Date(); // Текущая дата
+  return nextWednesday(today); // Используем date-fns для получения следующей среды
+}
 
 // Слушаем сообщения и сохраняем chatId
 bot.on('message', (msg) => {
@@ -228,7 +234,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 bot.onText(/Состав/, (msg) => {
   const chatId = msg.chat.id;
   const pattern = /^Состав$/;
-  let updateParticipantCount = updateParticipantCount();
+  let updateParticipantCountTeam = updateParticipantCount();
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
@@ -238,13 +244,16 @@ bot.onText(/Состав/, (msg) => {
     return;
   }
 
-  bot.sendMessage(chatId, updateParticipantCount.totalParticipants);
+  bot.sendMessage(
+    chatId,
+    `Количество игроков в статусе 'Готов' : ${updateParticipantCountTeam.totalParticipants}`
+  );
 });
 
 bot.onText(/Игроки/, (msg) => {
   const chatId = msg.chat.id;
   const pattern = /^Игроки$/;
-  let updateParticipantCount = updateParticipantCount();
+  let updateParticipantCountTotal = updateParticipantCount();
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
@@ -253,20 +262,19 @@ bot.onText(/Игроки/, (msg) => {
     bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
     return;
   }
-  bot.sendMessage(chatId, updateParticipantCount.total);
+  bot.sendMessage(chatId, updateParticipantCountTotal.total);
 });
 
 // Обработка команды Инструкция
 bot.onText(/Инфо/, (msg) => {
   const chatId = msg.chat.id;
-  const pattern = /^Состав$/;
+  const pattern = /^Инфо$/;
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
   }
-  bot.sendMessage(chatId, sendInfoMessage());
+  sendInfoMessage(msg); // Вызываем функцию, которая отправляет сообщение
 });
-
 // Административные команды
 bot.onText(/\/(start|close)/, async (msg, match) => {
   const chatId = msg.chat.id;
@@ -275,7 +283,6 @@ bot.onText(/\/(start|close)/, async (msg, match) => {
 
   const member = await bot.getChatMember(chatId, userId);
   if (!['administrator', 'creator'].includes(member.status)) {
-    bot.sendMessage(chatId, 'Эта команда доступна только администратору!');
     return;
   }
 
@@ -295,8 +302,13 @@ bot.onText(/\/(start|close)/, async (msg, match) => {
       bot.sendMessage(chatId, 'Сбор ещё не начинался.');
     } else {
       isRecruitmentOpen = false;
+      const nextWednesday = getNextWednesday(); // Получаем следующую среду
+      const formattedDate = format(nextWednesday, 'yyyy-MM-dd');
       updateParticipantCount(chatId);
-      bot.sendMessage(chatId, 'Сбор завершён! Следующий набор будет в среду.');
+      bot.sendMessage(
+        chatId,
+        `Сбор завершён! Следующий набор будет ${formattedDate}.`
+      );
     }
   }
 });
@@ -314,6 +326,13 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
 schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 59 }, () => {
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
+  const nextWednesday = getNextWednesday(); // Получаем следующую среду
+  const formattedDate = format(nextWednesday, 'yyyy-MM-dd');
+  bot.sendMessage(
+    groupChatId,
+    `Состав был сброшен! Следующий набор откроется в среду ${formattedDate} в 12:00.`
+  );
+  console.log(format(date, 'yyyy-MM-dd')); // Форматируем дату в строку
   bot.sendMessage(
     groupChatId,
     'Состав был сброшен! Следующий набор откроется  в среду в 12:00.'
@@ -333,5 +352,7 @@ function sendInfoMessage(msg) {
 "Состав" — посмотреть количество людей.
 "Игроки" — посмотреть общий состав.
   `;
-  bot.sendMessage(chatId, infoMessage);
+  bot.sendMessage(chatId, infoMessage); // Отправляем сообщение напрямую
 }
+
+// Выводим даты в удобочитаемом формате
