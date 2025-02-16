@@ -8,7 +8,8 @@ const bot = new TelegramBot(token, { polling: true });
 const { nextWednesday, format } = require('date-fns');
 
 // Переменная для хранения groupChatId
-let groupChatId = 462397585;
+//let groupChatId = 462397585;
+let groupChatId = null;
 // Состояние бота и участники
 let isRecruitmentOpen = false;
 let participants = {};
@@ -63,7 +64,7 @@ bot.on('chat_join_request', handleChatMemberEvents);
 
 // Функция обновления общего количества участников
 function updateParticipantCount(chatId) {
-  let statusList = 'Состав:\n';
+  let statusList = `⚽ Состав:\n`;
   let totalParticipants = 0;
   let readyCounter = 0; // Счётчик для участников в составе
 
@@ -74,10 +75,10 @@ function updateParticipantCount(chatId) {
     if (participant.status === 'Готов') {
       readyCounter += 1; // Увеличиваем счётчик
       totalParticipants += 1 + invitedFriends; // Учитываем участника и его друзей
-      statusList += `${readyCounter}. ${participant.name} — Готов(а) ( Позвал(а) ${invitedFriends} )\n`;
+      statusList += `${readyCounter}. ${participant.name} — Готов(а) | Позвал(а) ${invitedFriends} \n`;
     } else if (participant.status === 'Под Вопросом') {
       totalParticipants += invitedFriends; // Только друзья
-      statusList += `${participant.name} — Под Вопросом ( Позвал(а) ${invitedFriends} )\n`;
+      statusList += `${participant.name} — Под Вопросом | Позвал(а) ${invitedFriends}\n`;
     } else if (invitedFriends > 0) {
       statusList += `${participant.name} — Не участвует, но позвал(а) ${invitedFriends}\n`;
       totalParticipants += invitedFriends;
@@ -134,13 +135,13 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
       return;
     }
-    // if (number > 5) {
-    //   bot.sendMessage(
-    //     chatId,
-    //     `${userName}, ты можешь позвать не больше 5 друзей`
-    //   );
-    //   return;
-    // }
+    if (number > 5) {
+      bot.sendMessage(
+        chatId,
+        `${userName}, ты можешь позвать не больше 5 друзей`
+      );
+      return;
+    }
 
     if (participant.status === 'Готов') {
       if (number > 0) {
@@ -163,6 +164,9 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
         participant.status = 'Готов';
         bot.sendMessage(chatId, `${userName} добавлен(а) в состав.`);
       }
+      bot.deleteMessage(chatId, msg.message_id).catch((err) => {
+        console.error('Ошибка при удалении сообщения:', err);
+      });
     }
   } else if (symbol === '-') {
     const plusPattern = /^\-\d*$/; // Регулярное выражение: "-" или "-число"
@@ -205,6 +209,9 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
         participant.status = 'Не участвует';
         bot.sendMessage(chatId, `${userName} убран(а) из состава.`);
       }
+      bot.deleteMessage(chatId, msg.message_id).catch((err) => {
+        console.error('Ошибка при удалении сообщения:', err);
+      });
     }
   } else if (symbol === '?') {
     if (msg.text.trim() !== '?') {
@@ -224,6 +231,9 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
         `${userName} изменил(а) статус на "Под Вопросом".`
       );
     }
+    bot.deleteMessage(chatId, msg.message_id).catch((err) => {
+      console.error('Ошибка при удалении сообщения:', err);
+    });
   }
 
   // Обновляем состав
@@ -323,7 +333,7 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
   );
 });
 
-schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 59 }, () => {
+schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 0 }, () => {
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
   const nextWednesday = getNextWednesday(); // Получаем следующую среду
@@ -332,11 +342,14 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 59 }, () => {
     groupChatId,
     `Состав был сброшен! Следующий набор откроется в среду ${formattedDate} в 12:00.`
   );
-  console.log(format(date, 'yyyy-MM-dd')); // Форматируем дату в строку
-  bot.sendMessage(
-    groupChatId,
-    'Состав был сброшен! Следующий набор откроется  в среду в 12:00.'
-  );
+});
+//Выводим список игроков перед футболом
+schedule.scheduleJob({ dayOfWeek: 5, hour: 19, minute: 30 }, () => {
+  let updateParticipantCountTotal = updateParticipantCount();
+  const message = `Футбол скоро начнется...
+${updateParticipantCountTotal.total}
+  `;
+  bot.sendMessage(groupChatId, message.trimStart());
 });
 
 function sendInfoMessage(msg) {
