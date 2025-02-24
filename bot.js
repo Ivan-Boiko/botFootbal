@@ -88,9 +88,9 @@ function getParticipantStatus(participant, userName) {
     }
   } else if (participant.status === 'Под Вопросом') {
     if (participant.invitedFriends > 0) {
-      return `${participant.name} (@'${userName}') — Под Вопросом | Позвал ${participant.invitedFriends}`;
+      return `${participant.name} (${userName}) — Под Вопросом | Позвал ${participant.invitedFriends}`;
     } else {
-      return `${participant.name} (@'${userName}') — Под Вопросом`;
+      return `${participant.name} (${userName}) — Под Вопросом`;
     }
   } else if (participant.invitedFriends > 0) {
     return `${participant.name} — Не участвует, но позвал ${participant.invitedFriends}`;
