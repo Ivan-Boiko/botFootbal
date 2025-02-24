@@ -129,12 +129,12 @@ function updateParticipantCount(chatId) {
       if (invitedFriends > 0) {
         questionList += `${++questionCounter}. ${
           participant.name
-        } (@${userName}) — Под Вопросом | Позвал ${invitedFriends}\n`;
+        } (${userName}) — Под Вопросом | Позвал ${invitedFriends}\n`;
         totalParticipants += invitedFriends;
       } else {
         questionList += `${++questionCounter}. ${
           participant.name
-        } (@${userName}) — Под Вопросом\n`;
+        } (${userName}) — Под Вопросом\n`;
       }
     } else if (invitedFriends > 0) {
       notParticipatingList += `${++notParticipatingCounter}. ${
