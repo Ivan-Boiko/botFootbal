@@ -3,13 +3,13 @@
 const TelegramBot = require('node-telegram-bot-api');
 const schedule = require('node-schedule');
 const { nextWednesday, format } = require('date-fns');
-
+require('dotenv').config();
 // Токен бота
-const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug'; // Используйте переменные окружения для хранения токена
+const token = process.env.TOKEN; // Используйте переменные окружения для хранения токена
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = null;
+let groupChatId = process.env.GROUP_CHAT_ID;
 // Состояние бота и участники
 let isRecruitmentOpen = false;
 let participants = {};
@@ -216,7 +216,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 
     if (!isRecruitmentOpen) {
       bot
-        .sendMessage(chatId, 'Набор по кат закрыт. Жди уведомления!')
+        .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
         .catch((err) => {
           console.error(' Ошибка при отправке сообщения:', err);
         });
@@ -551,8 +551,8 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
       console.error('Ошибка при отправке сообщения:', err);
     });
 });
-
-schedule.scheduleJob({ dayOfWeek: 5, hour: 23, minute: 0 }, () => {
+// Сброс состава.
+schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
   const nextWednesday = getNextWednesday(); // Получаем следующую среду
@@ -573,7 +573,40 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 19, minute: 30 }, () => {
   const message = `Футбол скоро начнется...
 ${updateParticipantCountTotal.total}
   `;
-  bot.sendMessage(groupChatId, message.trimStart()).catch((err) => {
-    console.error('Ошибка при отправке сообщения:', err);
-  });
+  bot
+    .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
+    .catch((err) => {
+      console.error('Ошибка при отправке сообщения:', err);
+    });
+});
+
+schedule.scheduleJob({ dayOfWeek: 5, hour: 14, minute: 0 }, () => {
+  // Создаем пустую строку для хранения тегов пользователей
+  let taggedUsers = '';
+
+  // Проходимся по всем участникам
+  for (let userId in participants) {
+    const participant = participants[userId];
+
+    // Если статус участника "Под вопросом", то добавляем его тег в строку
+    if (participant.status === 'Под Вопросом') {
+      taggedUsers += `@${participant.userName} `;
+    }
+  }
+
+  // Если есть хотя бы один участник со статусом "Под вопросом"
+  if (taggedUsers) {
+    // Отправляем сообщение с тегами этих участников
+    bot
+      .sendMessage(
+        groupChatId,
+        `${taggedUsers}\nУважаемые игроки, скоро начнется футбол!\nПрошу дать окончательный ответ по участию в сегодняшней игре. Спасибо 😊`
+      )
+      .catch((err) => {
+        console.error('Ошибка при отправке сообщения:', err);
+      });
+  } else {
+    // Если никого не нужно тегать, можно отправить другое сообщение или ничего не делать
+    console.log('Нет игроков со статусом "Под вопросом"');
+  }
 });
