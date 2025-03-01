@@ -4,3 +4,4 @@
 # Игнорируем другие типичные файлы и папки
 node_modules/
 .DS_Store
+bot.log

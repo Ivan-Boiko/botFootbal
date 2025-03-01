@@ -1,32 +1,57 @@
 'use strict';
 
 const TelegramBot = require('node-telegram-bot-api');
-const schedule = require('node-schedule');
-const { nextWednesday, format } = require('date-fns');
+const { nextWednesday, format, nextMonday, nextThursday } = require('date-fns');
 require('dotenv').config();
-// Токен бота
-const token = process.env.TOKEN; // Используйте переменные окружения для хранения токена
+const logger = require('./logger');
+const schedule = require('node-schedule');
+// Токен бота - из переменных окружения для безопасности
+const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
 let groupChatId = process.env.GROUP_CHAT_ID;
-// Состояние бота и участники
+let currentAddress = '';
 let isRecruitmentOpen = false;
 let participants = {};
+logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
 
 function getNextWednesday() {
-  const today = new Date(); // Текущая дата
-  return nextWednesday(today); // Используем date-fns для получения следующей среды
+  const today = new Date();
+  const wed = nextWednesday(today);
+  logger.info(`Следующая среда: ${format(wed, 'dd.MM.yyyy')}`);
+  return wed;
 }
+function getNextMonday() {
+  const today = new Date();
+  const mon = nextMonday(today);
+  logger.info(`Следующий понедельник: ${format(mon, 'dd.MM.yyyy')}`);
+  return mon;
+}
+function getNextThursday() {
+  const today = new Date();
+  const thu = nextThursday(today);
+  logger.info(`Следующий четверг: ${format(thu, 'dd.MM.yyyy')}`);
+  return thu;
+}
+logger.info(`${getNextThursday()}`);
 
 // Слушаем сообщения и сохраняем chatId
 bot.on('message', (msg) => {
+  if (msg.from && msg.text) {
+    logger.info(
+      `Получено сообщение от ${msg.from.first_name} ${
+        msg.from.last_name || ''
+      } (ID: ${msg.from.id}): ${msg.text}`
+    );
+  }
   if (!groupChatId && msg.chat && msg.chat.id) {
     groupChatId = msg.chat.id;
+    logger.info(`Установлен новый чат ID группы: ${groupChatId}`);
     bot
       .sendMessage(groupChatId, 'Бот настроен для работы с этим чатом!')
       .catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(`Ошибка при отправке сообщения: ${err.message}`);
       });
   }
 });
@@ -38,13 +63,16 @@ function handleChatMemberEvents(msg) {
   if (msg.new_chat_members) {
     const newUsers = msg.new_chat_members;
     newUsers.forEach((newUser) => {
+      logger.info(
+        `Новый участник в группе: ${newUser.first_name} (ID: ${newUser.id})`
+      );
       bot
         .sendMessage(
           chatId,
           `Привет, ${newUser.first_name}! Добро пожаловать в группу!`
         )
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(`Ошибка при отправке приветствия: ${err.message}`);
         });
     });
   }
@@ -55,36 +83,63 @@ function handleChatMemberEvents(msg) {
 
     if (joinRequest) {
       const userId = joinRequest.from.id;
+      logger.info(
+        `Получен запрос на вступление в группу от ${joinRequest.from.first_name} (ID: ${userId})`
+      );
       bot
         .approveChatJoinRequest(chatId, userId)
         .then(() => {
+          logger.info(
+            `Запрос на вступление одобрен для ${joinRequest.from.first_name} (ID: ${userId})`
+          );
           bot
             .sendMessage(
               chatId,
               `Пользователь ${joinRequest.from.first_name} присоединился к группе.`
             )
             .catch((err) => {
-              console.error('Ошибка при отправке сообщения:', err);
+              logger.error(
+                `Ошибка при отправке сообщения о присоединении: ${err.message}`
+              );
             });
         })
         .catch((err) => {
-          console.error('Ошибка при одобрении запроса на вступление:', err);
+          logger.error(
+            `Ошибка при одобрении запроса на вступление: ${err.message}`
+          );
+          'Ошибка при одобрении запроса на вступление:', err;
         });
     }
+  }
+
+  // Обработка покидающих чат
+  if (msg.left_chat_member) {
+    const leftUser = msg.left_chat_member;
+    logger.info(
+      `Пользователь ${leftUser.first_name} (ID: ${leftUser.id}) покинул группу`
+    );
+    bot
+      .sendMessage(chatId, `${leftUser.first_name} покинул группу`)
+      .catch((err) => {
+        logger.error(
+          `Ошибка при отправке сообщения о выходе участника: ${err.message}`
+        );
+      });
   }
 }
 
 // Слушаем события: новые участники и запросы на вступление
 bot.on('new_chat_members', handleChatMemberEvents);
 bot.on('chat_join_request', handleChatMemberEvents);
+bot.on('left_chat_member', handleChatMemberEvents);
 
-// Функция обновления общего количества участников
+// Функция для получения статуса участника
 function getParticipantStatus(participant, userName) {
   if (participant.status === 'Готов') {
     if (participant.invitedFriends > 0) {
-      return `${participant.name} — Готов | Позвал ${participant.invitedFriends}`;
+      return `${participant.name} | Позвал ${participant.invitedFriends}`;
     } else {
-      return `${participant.name} — Готов`;
+      return `${participant.name}`;
     }
   } else if (participant.status === 'Под Вопросом') {
     if (participant.invitedFriends > 0) {
@@ -98,7 +153,9 @@ function getParticipantStatus(participant, userName) {
   return '';
 }
 
+// Функция обновления общего количества участников
 function updateParticipantCount(chatId) {
+  logger.info(`Обновление списка участников для чата ${chatId}`);
   let statusList = `\n\n⚽<b>Состав: \n\n</b>`; // Жирный заголовок
 
   let totalParticipants = 0;
@@ -119,10 +176,10 @@ function updateParticipantCount(chatId) {
       if (invitedFriends > 0) {
         readyList += `${++readyCounter}. ${
           participant.name
-        } — Готов | Позвал ${invitedFriends}\n`;
+        } | Позвал ${invitedFriends}\n`;
         totalParticipants += 1 + invitedFriends;
       } else {
-        readyList += `${++readyCounter}. ${participant.name} — Готов\n`;
+        readyList += `${++readyCounter}. ${participant.name} \n`;
         totalParticipants += 1;
       }
     } else if (participant.status === 'Под Вопросом') {
@@ -157,6 +214,9 @@ function updateParticipantCount(chatId) {
   }
 
   if (totalParticipants >= 15) {
+    logger.info(
+      `Достигнуто необходимое количество участников: ${totalParticipants}`
+    );
     bot
       .sendMessage(
         chatId,
@@ -164,14 +224,22 @@ function updateParticipantCount(chatId) {
         { parse_mode: 'HTML' }
       )
       .catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(
+          `Ошибка при отправке уведомления о достижении лимита: ${err.message}`
+        );
       });
   }
+  let total = statusList + `<b>\nИтого:</b> ${totalParticipants}\n`;
 
-  let total = statusList + `<b>\nИтого:</b> ${totalParticipants} `;
+  if (currentAddress) {
+    total += `\n<b>Адрес:</b> ${currentAddress}`;
+  }
+
+  logger.info(`Общее количество участников: ${totalParticipants}`);
 
   return { total, totalParticipants };
 }
+
 // Обработка команд +, -, ?
 bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
   const chatId = msg.chat.id;
@@ -181,8 +249,13 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
   const symbol = match[1];
   const number = parseInt(match[2], 10) || 0;
 
+  logger.info(
+    `Обработка команды ${symbol}${number} от ${userName} (ID: ${userId})`
+  );
+
   // Создаём участника, если он ещё не зарегистрирован
   if (!participants[userId]) {
+    logger.info(`Создание нового участника: ${userName} (ID: ${userId})`);
     participants[userId] = {
       name: userName,
       status: 'Не участвует',
@@ -204,33 +277,40 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       msg.text.trim() === '+' ? 0 : parseInt(msg.text.slice(1), 10);
 
     if (number === 0 && msg.text.trim() !== '+') {
+      logger.warn(`${userName} пытается добавить 0 человек`);
       bot
         .sendMessage(chatId, '**Нельзя добавить 0 человек.**', {
           parse_mode: 'Markdown',
         })
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения об ошибке: ${err.message}`
+          );
         });
       return;
     }
 
     if (!isRecruitmentOpen) {
+      logger.info(`${userName} пытается добавиться, когда набор закрыт`);
       bot
         .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
         .catch((err) => {
-          console.error(' Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
+          );
         });
       return;
     }
 
     if (number > 5) {
+      logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
       bot
         .sendMessage(
           chatId,
           `${userName}, ты можешь призывать не больше 5 друзей`
         )
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
         });
       return;
     }
@@ -239,19 +319,27 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       if (number > 0) {
         // Добавление друзей, если статус "Готов"
         participant.invitedFriends += number;
+        logger.info(
+          `${userName} добавил ${number} друзей, новое количество: ${participant.invitedFriends}`
+        );
         const { totalParticipants } = updateParticipantCount(chatId);
         bot
           .sendMessage(
             chatId,
-            `${userName} позвал +${number}. \nИтого: ${totalParticipants}`
+            `${userName} Позвал +${number}. \nИтого: ${totalParticipants}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при обновлении сообщения о добавлении друзей: ${err.message}`
+            );
           });
       } else {
         // Если просто "+" и статус "Готов", выводим сообщение
+        logger.info(`${userName} уже в составе, повторное добавление`);
         bot.sendMessage(chatId, 'Ты уже в составе').catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о статусе: ${err.message}`
+          );
         });
         return;
       }
@@ -260,6 +348,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       if (number > 0) {
         // Добавление друзей
         participant.invitedFriends += number;
+        logger.info(`${userName} не участвует, но позвал ${number} друзей`);
         const { totalParticipants } = updateParticipantCount(chatId);
         bot
           .sendMessage(
@@ -267,11 +356,14 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
             `${userName} не участвует, но позвал ${number} друзей.\nИтого: ${totalParticipants}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения о неучастнике: ${err.message}`
+            );
           });
       } else {
         // Запись в состав
         participant.status = 'Готов';
+        logger.info(`${userName} добавлен в состав`);
         const { totalParticipants } = updateParticipantCount(chatId);
         bot
           .sendMessage(
@@ -279,11 +371,14 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
             `${userName} добавлен в состав.\nИтого: ${totalParticipants}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения о добавлении: ${err.message}`
+            );
           });
       }
       bot.deleteMessage(chatId, msg.message_id).catch((err) => {
-        console.error('Ошибка при удалении сообщения:', err);
+        logger.error(`Ошибка при удалении сообщения: ${err.message}`);
+        'Ошибка при удалении сообщения:', err;
       });
     }
   } else if (symbol === '-') {
@@ -296,17 +391,21 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       msg.text.trim() === '-' ? 0 : parseInt(msg.text.slice(1), 10);
 
     if (number === 0 && msg.text.trim() !== '-') {
+      logger.warn(`${userName} пытается убрать 0 человек`);
       bot.sendMessage(chatId, 'Нельзя убрать 0 человек.').catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
       });
       return;
     }
 
     if (!isRecruitmentOpen) {
+      logger.info(`${userName} пытается выйти из состава, когда набор закрыт`);
       bot
         .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
+          );
         });
       return;
     }
@@ -315,17 +414,25 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       // Удаление друзей
       if (participant.invitedFriends < number) {
         // Если число больше количества друзей
+        logger.warn(
+          `${userName} пытается убрать ${number} друзей, но имеет только ${participant.invitedFriends}`
+        );
         bot
           .sendMessage(
             chatId,
             `${userName}, ты не призывал так много друзей! Ты можешь убрать ${participant.invitedFriends}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения о превышении: ${err.message}`
+            );
           });
       } else {
         // Уменьшение количества друзей
         participant.invitedFriends -= number;
+        logger.info(
+          `${userName} убрал ${number} друзей, осталось: ${participant.invitedFriends}`
+        );
         const { totalParticipants } = updateParticipantCount(chatId);
         bot
           .sendMessage(
@@ -333,21 +440,27 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
             `${userName} сделал -${number}. \nИтого: ${totalParticipants}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения об уменьшении: ${err.message}`
+            );
           });
       }
     } else {
       // Удаление из состава
       if (participant.status === 'Не участвует') {
         // Если пользователь уже не в составе
+        logger.info(`${userName} пытается выйти, но уже не в составе`);
         bot
           .sendMessage(chatId, `${userName}, тебя и так нет в составе.`)
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения о статусе: ${err.message}`
+            );
           });
       } else {
         // Удаление пользователя из состава
         participant.status = 'Не участвует';
+        logger.info(`${userName} убран из состава`);
         const { totalParticipants } = updateParticipantCount(chatId);
         bot
           .sendMessage(
@@ -355,11 +468,14 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
             `${userName} убран из состава. \nИтого: ${totalParticipants}`
           )
           .catch((err) => {
-            console.error('Ошибка при отправке сообщения:', err);
+            logger.error(
+              `Ошибка при отправке сообщения об удалении: ${err.message}`
+            );
           });
       }
       bot.deleteMessage(chatId, msg.message_id).catch((err) => {
-        console.error(' Ошибка при удалении сообщения:', err);
+        logger.error(`Ошибка при удалении сообщения: ${err.message}`);
+        'Ошибка при удалении сообщения:', err;
       });
     }
   } else if (symbol === '?') {
@@ -368,23 +484,30 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
     }
 
     if (!isRecruitmentOpen) {
+      logger.info(`${userName} пытается изменить статус, когда набор закрыт`);
       bot
         .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
+          );
         });
       return;
     }
 
     // Изменение статуса на "Под вопросом"
     if (participant.status === 'Под Вопросом') {
+      logger.info(`${userName} уже имеет статус "Под вопросом"`);
       bot
         .sendMessage(chatId, `${userName}, ты уже под вопросом.`)
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о статусе: ${err.message}`
+          );
         });
     } else {
       participant.status = 'Под Вопросом';
+      logger.info(`${userName} изменил статус на "Под Вопросом"`);
       const { totalParticipants } = updateParticipantCount(chatId);
       bot
         .sendMessage(
@@ -392,11 +515,14 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
           `${userName} изменил статус на "Под Вопросом".\nИтого: ${totalParticipants}`
         )
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о смене статуса: ${err.message}`
+          );
         });
     }
     bot.deleteMessage(chatId, msg.message_id).catch((err) => {
-      console.error('Ошибка при удалении сообщения:', err);
+      logger.error(`Ошибка при удалении сообщения: ${err.message}`);
+      'Ошибка при удалении сообщения:', err;
     });
   }
 
@@ -408,66 +534,72 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
 bot.onText(/Состав$/, (msg) => {
   const chatId = msg.chat.id;
   const pattern = /^Состав$/;
+  const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
+
+  logger.info(`${userName} (ID: ${msg.from.id}) запросил информацию о составе`);
 
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
   }
 
   if (!isRecruitmentOpen) {
+    logger.info(`${userName} пытается посмотреть состав, когда набор закрыт`);
     bot
       .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
       .catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(
+          `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
+        );
       });
     return;
   }
 
   const updateParticipantCountTeam = updateParticipantCount(chatId);
+  logger.info(
+    `Отправка информации о количестве игроков: ${updateParticipantCountTeam.totalParticipants}`
+  );
   bot
     .sendMessage(
       chatId,
       `Игроки в статусе 'Готов': ${updateParticipantCountTeam.totalParticipants}`
     )
     .catch((err) => {
-      console.error('Ошибка при отправке сообщения:', err);
+      logger.error(`Ошибка при отправке информации о составе: ${err.message}`);
     });
 });
 
 // Обработка команды Игроки
 bot.onText(/Игроки$/, (msg) => {
   const chatId = msg.chat.id;
-  const pattern = /^Игроки$/;
+  const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
 
-  if (!pattern.test(msg.text.trim())) {
-    return; // Игнорируем, если сообщение не соответствует формату
-  }
+  logger.info(
+    `${userName} (ID: ${msg.from.id}) запросил полный список игроков`
+  );
 
   if (!isRecruitmentOpen) {
-    bot
-      .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
-      .catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
-      });
+    bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
     return;
   }
 
   const updateParticipantCountTotal = updateParticipantCount(chatId);
-  bot
-    .sendMessage(chatId, updateParticipantCountTotal.total, {
-      parse_mode: 'HTML',
-    })
-    .catch((err) => {
-      console.error('Ошибка при отправке сообщения:', err);
-    });
+  bot.sendMessage(chatId, updateParticipantCountTotal.total, {
+    parse_mode: 'HTML',
+  });
 });
 
 // Обработка команды Инфо
 bot.onText(/Инфо$/, (msg) => {
   const chatId = msg.chat.id;
+  const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
+  logger.info(
+    `${userName} (ID: ${msg.from.id}) запросил информацию о командах`
+  );
   sendInfoMessage(chatId);
 });
 
 function sendInfoMessage(chatId) {
+  logger.info(`Отправка информационного сообщения в чат ${chatId}`);
   const infoMessage = `
 Добро пожаловать! ⚽
 "+" — записаться на матч.
@@ -480,109 +612,130 @@ function sendInfoMessage(chatId) {
 "Игроки" — посмотреть общий состав.
   `;
   bot.sendMessage(chatId, infoMessage).catch((err) => {
-    console.error('Ошибка при отправке сообщения:', err);
+    logger.error(
+      `Ошибка при отправке информационного сообщения: ${err.message}`
+    );
   });
 }
 
 // Административные команды
-bot.onText(/\/(start|close)$/, async (msg, match) => {
+bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
+  const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
   const command = match[1];
 
+  logger.info(
+    `${userName} (ID: ${userId}) выполняет административную команду ${command}`
+  );
+
   const member = await bot.getChatMember(chatId, userId).catch((err) => {
-    console.error('Ошибка при получении информации о чате:', err);
+    logger.error(`Ошибка при получении информации о чате: ${err.message}`);
+    'Ошибка при получении информации о чате:', err;
     return null;
   });
 
   if (!member || !['administrator', 'creator'].includes(member.status)) {
+    logger.warn(
+      `${userName} пытается выполнить админ-команду без прав: ${command}`
+    );
     return;
   }
 
   if (command === 'start') {
     if (isRecruitmentOpen) {
+      logger.info('Попытка открыть набор, когда он уже открыт');
       bot.sendMessage(chatId, 'Сбор уже запущен!').catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(`Ошибка при отправке сообщения: ${err.message}`);
       });
     } else {
       isRecruitmentOpen = true;
       participants = {};
+      logger.info(`${userName} открыл набор вручную`);
       bot
         .sendMessage(
           chatId,
           'Набор на матч начался! Напиши "+", "-", "?" для взаимодействия.'
         )
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения об открытии набора: ${err.message}`
+          );
         });
     }
   } else if (command === 'close') {
     if (!isRecruitmentOpen) {
+      logger.info('Попытка закрыть набор, когда он уже закрыт');
       bot.sendMessage(chatId, 'Сбор ещё не начинался.').catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(`Ошибка при отправке сообщения: ${err.message}`);
       });
     } else {
       isRecruitmentOpen = false;
       const nextWednesday = getNextWednesday(); // Получаем следующую среду
       const formattedDate = format(nextWednesday, 'yyyy-MM-dd');
       updateParticipantCount(chatId);
+      logger.info(`${userName} закрыл набор вручную`);
       bot
         .sendMessage(
           chatId,
           `Сбор завершён! Следующий набор будет ${formattedDate}.`
         )
         .catch((err) => {
-          console.error('Ошибка при отправке сообщения:', err);
+          logger.error(
+            `Ошибка при отправке сообщения о завершении набора: ${err.message}`
+          );
         });
     }
+  } else if (command === 'adress') {
+    logger.info(`${userName} вызвал команду /adress`);
+    bot.sendMessage(chatId, 'Введите адрес').then(() => {
+      bot.once('message', (response) => {
+        if (response.text.toLowerCase() === 'отмена') {
+          bot.sendMessage(
+            chatId,
+            'Команда отменена. Запустите команду заново.'
+          );
+          return;
+        }
+
+        currentAddress = response.text;
+        logger.info(`Адрес обновлен: ${currentAddress}`);
+
+        bot.sendMessage(chatId, 'Адрес записан.');
+      });
+    });
   }
 });
 
-// Автоматическое открытие и закрытие набора
-schedule.scheduleJob({ dayOfWeek: 3, hour: 12, minute: 0 }, () => {
+// Автоматическое открытие Понедельник
+schedule.scheduleJob({ dayOfWeek: 1, hour: 10, minute: 30 }, () => {
+  const NextWednesday = getNextWednesday();
+  logger.info(
+    'Выполнение запланированной задачи: автоматическое открытие набора'
+  );
   isRecruitmentOpen = true;
   participants = {};
   bot
     .sendMessage(
       groupChatId,
-      'Набор на матч начался! Записывайтесь и зовите друзей!'
+      `Набор на среду <b>${NextWednesday}</b> открыт! Записывайтесь и зовите друзей!`,
+      { parse_mode: 'HTML' }
     )
     .catch((err) => {
-      console.error('Ошибка при отправке сообщения:', err);
-    });
-});
-// Сброс состава.
-schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
-  isRecruitmentOpen = false;
-  updateParticipantCount(groupChatId);
-  const nextWednesday = getNextWednesday(); // Получаем следующую среду
-  const formattedDate = format(nextWednesday, 'yyyy-MM-dd');
-  bot
-    .sendMessage(
-      groupChatId,
-      `Состав был сброшен! Следующий набор откроется в среду ${formattedDate} в 12:00.`
-    )
-    .catch((err) => {
-      console.error('Ошибка при отправке сообщения:', err);
+      logger.error(
+        `Ошибка при отправке сообщения об открытии набора: ${err.message}`
+      );
     });
 });
 
-// Выводим список игроков перед футболом
-schedule.scheduleJob({ dayOfWeek: 5, hour: 19, minute: 30 }, () => {
-  const updateParticipantCountTotal = updateParticipantCount();
-  const message = `Футбол скоро начнется...
-${updateParticipantCountTotal.total}
-  `;
-  bot
-    .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
-    .catch((err) => {
-      console.error('Ошибка при отправке сообщения:', err);
-    });
-});
-
-schedule.scheduleJob({ dayOfWeek: 5, hour: 14, minute: 0 }, () => {
+//Тегаем участников
+schedule.scheduleJob({ dayOfWeek: 3, hour: 14, minute: 0 }, () => {
+  logger.info(
+    'Выполнение запланированной задачи: тегирование участников со статусом "Под вопросом"'
+  );
   // Создаем пустую строку для хранения тегов пользователей
   let taggedUsers = '';
+  let taggedCount = 0;
 
   // Проходимся по всем участникам
   for (let userId in participants) {
@@ -591,11 +744,15 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 14, minute: 0 }, () => {
     // Если статус участника "Под вопросом", то добавляем его тег в строку
     if (participant.status === 'Под Вопросом') {
       taggedUsers += `@${participant.userName} `;
+      taggedCount++;
     }
   }
 
   // Если есть хотя бы один участник со статусом "Под вопросом"
   if (taggedUsers) {
+    logger.info(
+      `Отправка напоминания ${taggedCount} участникам со статусом "Под вопросом"`
+    );
     // Отправляем сообщение с тегами этих участников
     bot
       .sendMessage(
@@ -603,10 +760,149 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 14, minute: 0 }, () => {
         `${taggedUsers}\nУважаемые игроки, скоро начнется футбол!\nПрошу дать окончательный ответ по участию в сегодняшней игре. Спасибо 😊`
       )
       .catch((err) => {
-        console.error('Ошибка при отправке сообщения:', err);
+        logger.error(
+          `Ошибка при отправке напоминания участникам: ${err.message}`
+        );
       });
   } else {
     // Если никого не нужно тегать, можно отправить другое сообщение или ничего не делать
-    console.log('Нет игроков со статусом "Под вопросом"');
+    logger.info('Нет игроков со статусом "Под вопросом"');
   }
+});
+
+// Выводим список игроков перед футболом
+schedule.scheduleJob({ dayOfWeek: 3, hour: 19, minute: 30 }, () => {
+  logger.info(
+    'Выполнение запланированной задачи: отправка списка игроков перед футболом'
+  );
+  const updateParticipantCountTotal = updateParticipantCount(groupChatId);
+  const message = `Футбол скоро начнется...
+${updateParticipantCountTotal.total}
+  `;
+  bot
+    .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке списка игроков перед футболом: ${err.message}`
+      );
+    });
+});
+
+// Сброс состава.
+schedule.scheduleJob({ dayOfWeek: 3, hour: 22, minute: 30 }, () => {
+  logger.info('Выполнение запланированной задачи: сброс состава');
+  isRecruitmentOpen = false;
+  updateParticipantCount(groupChatId);
+  const NextWednesday = getNextWednesday(); // Получаем следующую среду
+  const formattedDate = format(NextWednesday, 'dd-MM-yyyy');
+  bot
+    .sendMessage(
+      groupChatId,
+      `Состав был сброшен! Следующий набор откроется в четверг ${formattedDate} в 10:30.`
+    )
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке сообщения о сбросе состава: ${err.message}`
+      );
+    });
+});
+
+// Автоматическое открытие Среда
+schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
+  const nextThursday = getNextThursday();
+  logger.info(
+    'Выполнение запланированной задачи: автоматическое открытие набора'
+  );
+  isRecruitmentOpen = true;
+  participants = {};
+  bot
+    .sendMessage(
+      groupChatId,
+      `Набор на пятницу <b>${nextThursday}</b> открыт! Записывайтесь и зовите друзей!`,
+      { parse_mode: 'HTML' }
+    )
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке сообщения об открытии набора: ${err.message}`
+      );
+    });
+});
+
+//Тегаем участников
+schedule.scheduleJob({ dayOfWeek: 5, hour: 14, minute: 0 }, () => {
+  logger.info(
+    'Выполнение запланированной задачи: тегирование участников со статусом "Под вопросом"'
+  );
+  // Создаем пустую строку для хранения тегов пользователей
+  let taggedUsers = '';
+  let taggedCount = 0;
+
+  // Проходимся по всем участникам
+  for (let userId in participants) {
+    const participant = participants[userId];
+
+    // Если статус участника "Под вопросом", то добавляем его тег в строку
+    if (participant.status === 'Под Вопросом') {
+      taggedUsers += `@${participant.userName} `;
+      taggedCount++;
+    }
+  }
+
+  // Если есть хотя бы один участник со статусом "Под вопросом"
+  if (taggedUsers) {
+    logger.info(
+      `Отправка напоминания ${taggedCount} участникам со статусом "Под вопросом"`
+    );
+    // Отправляем сообщение с тегами этих участников
+    bot
+      .sendMessage(
+        groupChatId,
+        `${taggedUsers}\nУважаемые игроки, скоро начнется футбол!\nПрошу дать окончательный ответ по участию в сегодняшней игре. Спасибо 😊`
+      )
+      .catch((err) => {
+        logger.error(
+          `Ошибка при отправке напоминания участникам: ${err.message}`
+        );
+      });
+  } else {
+    // Если никого не нужно тегать, можно отправить другое сообщение или ничего не делать
+    logger.info('Нет игроков со статусом "Под вопросом"');
+  }
+});
+
+// Выводим список игроков перед футболом
+schedule.scheduleJob({ dayOfWeek: 5, hour: 19, minute: 30 }, () => {
+  logger.info(
+    'Выполнение запланированной задачи: отправка списка игроков перед футболом'
+  );
+  const updateParticipantCountTotal = updateParticipantCount(groupChatId);
+  const message = `Футбол скоро начнется...
+${updateParticipantCountTotal.total}
+  `;
+  bot
+    .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке списка игроков перед футболом: ${err.message}`
+      );
+    });
+});
+
+// Сброс состава.
+schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
+  logger.info('Выполнение запланированной задачи: сброс состава');
+  isRecruitmentOpen = false;
+  updateParticipantCount(groupChatId);
+  const nextMonday = getNextMonday(); // Получаем следующую среду
+  const formattedDate = format(nextMonday, 'dd-MM-yyyy');
+  bot
+    .sendMessage(
+      groupChatId,
+      `Состав был сброшен! Следующий набор откроется в понедельник ${formattedDate} в 12:00.`
+    )
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке сообщения о сбросе состава: ${err.message}`
+      );
+    });
 });
