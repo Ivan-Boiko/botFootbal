@@ -906,3 +906,11 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
       );
     });
 });
+
+schedule.scheduleJob(new Date(Date.now() + 5 * 60 * 1000), () => {
+  logger.info('Бот запущен и готов к работе');
+
+  bot.sendMessage(groupChatId, 'Бот запущен и готов к работе.').catch((err) => {
+    logger.error(`Ошибка при отправке сообщения: ${err.message}`);
+  });
+});
