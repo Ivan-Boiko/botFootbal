@@ -217,7 +217,7 @@ function updateParticipantCount(chatId) {
   }
 
   if (notParticipatingList) {
-    statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}\n`; // Жирный заголовок
+    statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}`; // Жирный заголовок
   }
 
   if (totalParticipants >= 15 && totalParticipants !== lastAnnouncedCount) {
@@ -226,7 +226,7 @@ function updateParticipantCount(chatId) {
     bot
       .sendMessage(
         chatId,
-        `<b>Внимание, количество участников составляет более 15 человек!\n  Итого: ${totalParticipants}</b>`,
+        `<b>Внимание,количество участников составляет более 15 человек!</b>`,
         { parse_mode: 'HTML' }
       )
       .catch((err) => {
@@ -318,18 +318,18 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       return;
     }
 
-    // if (number > 5) {
-    //   logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
-    //   bot
-    //     .sendMessage(
-    //       chatId,
-    //       `${userName}, ты можешь призывать не больше 5 друзей`
-    //     )
-    //     .catch((err) => {
-    //       logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
-    //     });
-    //   return;
-    // }
+    if (number > 5) {
+      logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
+      bot
+        .sendMessage(
+          chatId,
+          `${userName}, ты можешь призывать не больше 5 друзей`
+        )
+        .catch((err) => {
+          logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
+        });
+      return;
+    }
 
     if (participant.status === 'Готов') {
       if (number > 0) {
@@ -750,7 +750,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
 });
 
 // Автоматическое открытие Понедельник
-schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 00 }, () => {
+schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 0 }, () => {
   const NextWednesday = getNextWednesday();
   logger.info(
     'Выполнение запланированной задачи: автоматическое открытие набора'
