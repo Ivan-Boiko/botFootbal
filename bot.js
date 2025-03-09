@@ -6,35 +6,42 @@ require('dotenv').config();
 const logger = require('./logger');
 const schedule = require('node-schedule');
 // Токен бота - из переменных окружения для безопасности
-const token = process.env.TELEGRAM_BOT_TOKEN;
+const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = process.env.GROUP_CHAT_ID;
+let groupChatId = -1002050996488;
 let currentAddress = '';
 let isRecruitmentOpen = false;
+let lastAnnouncedCount = 0;
+let isWaitingForAddress = false;
 let participants = {};
 logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
 
-function getNextWednesday() {
-  const today = new Date();
-  const wed = nextWednesday(today);
-  logger.info(`Следующая среда: ${format(wed, 'dd.MM.yyyy')}`);
-  return wed;
-}
 function getNextMonday() {
-  const today = new Date();
-  const mon = nextMonday(today);
-  logger.info(`Следующий понедельник: ${format(mon, 'dd.MM.yyyy')}`);
-  return mon;
+  return getNextFormattedDate(nextMonday, 'Следующий понедельник');
 }
+
+function getNextWednesday() {
+  return getNextFormattedDate(nextWednesday, 'Следующая среда');
+}
+
 function getNextThursday() {
-  const today = new Date();
-  const thu = nextThursday(today);
-  logger.info(`Следующий четверг: ${format(thu, 'dd.MM.yyyy')}`);
-  return thu;
+  return getNextFormattedDate(nextThursday, 'Следующий четверг');
 }
-logger.info(`${getNextThursday()}`);
+function getNextFriday() {
+  return getNextFormattedDate(nextFriday, 'Следующая пятница');
+}
+
+function getNextFormattedDate(nextDayFunction, label) {
+  const today = new Date();
+  const nextDay = nextDayFunction(today);
+  let formattedDate = format(nextDay, 'eeee, dd.MM.yyyy HH:mm', { locale: ru });
+  formattedDate =
+    formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+  logger.info(`${label}: ${formattedDate}`);
+  return formattedDate;
+}
 
 // Слушаем сообщения и сохраняем chatId
 bot.on('message', (msg) => {
@@ -213,21 +220,20 @@ function updateParticipantCount(chatId) {
     statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}\n`; // Жирный заголовок
   }
 
-  if (totalParticipants >= 15) {
-    logger.info(
-      `Достигнуто необходимое количество участников: ${totalParticipants}`
-    );
+  if (totalParticipants >= 15 && totalParticipants !== lastAnnouncedCount) {
+    lastAnnouncedCount = totalParticipants; // Обновляем последнее объявленное количество
+    logger.info(`Достигнуто ${totalParticipants} участников.`);
     bot
       .sendMessage(
         chatId,
-        '<b>Внимание, количество участников составляет 15 человек!</b>',
+        `<b>Внимание, количество участников составляет более 15 человек!\n  Итого: ${totalParticipants}</b>`,
         { parse_mode: 'HTML' }
       )
       .catch((err) => {
-        logger.error(
-          `Ошибка при отправке уведомления о достижении лимита: ${err.message}`
-        );
+        logger.error(`Ошибка при отправке уведомления: ${err.message}`);
       });
+  } else if (totalParticipants < 15) {
+    lastAnnouncedCount = 0; // Если стало меньше 15, сбрасываем
   }
   let total = statusList + `<b>\nИтого:</b> ${totalParticipants}\n`;
 
@@ -238,6 +244,16 @@ function updateParticipantCount(chatId) {
   logger.info(`Общее количество участников: ${totalParticipants}`);
 
   return { total, totalParticipants };
+}
+function handleClosedRecruitment(chatId, userName) {
+  logger.info(`${userName} пытается добавиться, когда набор закрыт`);
+  bot
+    .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
+    .catch((err) => {
+      logger.error(
+        `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
+      );
+    });
 }
 
 // Обработка команд +, -, ?
@@ -302,18 +318,18 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       return;
     }
 
-    if (number > 5) {
-      logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
-      bot
-        .sendMessage(
-          chatId,
-          `${userName}, ты можешь призывать не больше 5 друзей`
-        )
-        .catch((err) => {
-          logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
-        });
-      return;
-    }
+    // if (number > 5) {
+    //   logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
+    //   bot
+    //     .sendMessage(
+    //       chatId,
+    //       `${userName}, ты можешь призывать не больше 5 друзей`
+    //     )
+    //     .catch((err) => {
+    //       logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
+    //     });
+    //   return;
+    // }
 
     if (participant.status === 'Готов') {
       if (number > 0) {
@@ -399,14 +415,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
     }
 
     if (!isRecruitmentOpen) {
-      logger.info(`${userName} пытается выйти из состава, когда набор закрыт`);
-      bot
-        .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
-        .catch((err) => {
-          logger.error(
-            `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
-          );
-        });
+      handleClosedRecruitment(chatId, userName);
       return;
     }
 
@@ -484,14 +493,10 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
     }
 
     if (!isRecruitmentOpen) {
-      logger.info(`${userName} пытается изменить статус, когда набор закрыт`);
-      bot
-        .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
-        .catch((err) => {
-          logger.error(
-            `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
-          );
-        });
+      if (!isRecruitmentOpen) {
+        handleClosedRecruitment(chatId, userName);
+        return;
+      }
       return;
     }
 
@@ -543,15 +548,10 @@ bot.onText(/Состав$/, (msg) => {
   }
 
   if (!isRecruitmentOpen) {
-    logger.info(`${userName} пытается посмотреть состав, когда набор закрыт`);
-    bot
-      .sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!')
-      .catch((err) => {
-        logger.error(
-          `Ошибка при отправке сообщения о закрытом наборе: ${err.message}`
-        );
-      });
-    return;
+    if (!isRecruitmentOpen) {
+      handleClosedRecruitment(chatId, userName);
+      return;
+    }
   }
 
   const updateParticipantCountTeam = updateParticipantCount(chatId);
@@ -578,7 +578,7 @@ bot.onText(/Игроки$/, (msg) => {
   );
 
   if (!isRecruitmentOpen) {
-    bot.sendMessage(chatId, 'Набор пока закрыт. Жди уведомления!');
+    handleClosedRecruitment(chatId, userName);
     return;
   }
 
@@ -624,6 +624,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
   const userId = msg.from.id;
   const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
   const command = match[1];
+  const tag = msg.from.username;
 
   logger.info(
     `${userName} (ID: ${userId}) выполняет административную команду ${command}`
@@ -635,7 +636,10 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     return null;
   });
 
-  if (!member || !['administrator', 'creator'].includes(member.status)) {
+  if (
+    !member ||
+    !['administrator', 'creator', 'adress'].includes(member.status)
+  ) {
     logger.warn(
       `${userName} пытается выполнить админ-команду без прав: ${command}`
     );
@@ -688,27 +692,65 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     }
   } else if (command === 'adress') {
     logger.info(`${userName} вызвал команду /adress`);
-    bot.sendMessage(chatId, 'Введите адрес').then(() => {
-      bot.once('message', (response) => {
-        if (response.text.toLowerCase() === 'отмена') {
-          bot.sendMessage(
-            chatId,
-            'Команда отменена. Запустите команду заново.'
-          );
-          return;
-        }
+    if (member.status !== 'creator' && member.status !== 'administrator') {
+      bot.sendMessage(chatId, 'Нет');
+      return;
+    }
 
-        currentAddress = response.text;
-        logger.info(`Адрес обновлен: ${currentAddress}`);
+    if (isWaitingForAddress) {
+      bot.sendMessage(
+        chatId,
+        'Вы уже запустили команду /adress. Ожидание ввода адреса.'
+      );
+      return;
+    }
+    isWaitingForAddress = true;
+    bot.sendMessage(chatId, 'Введите адрес');
 
-        bot.sendMessage(chatId, 'Адрес записан.');
-      });
-    });
+    const adminId = msg.from.id;
+
+    const addressListener = (response) => {
+      // Игнорируем сообщения от всех, кроме администратора
+      if (response.from.id !== adminId && isWaitingForAddress === true) return;
+
+      if (response.text.toLowerCase() === 'отмена') {
+        bot.sendMessage(chatId, 'Команда отменена. Запустите команду заново.');
+        learTimeout(addressTimeout);
+        clearTimeout(cancelTimeout);
+        bot.off('message', addressListener);
+        isWaitingForAddress = false; // Отключаем обработчик
+        return;
+      }
+
+      currentAddress = response.text;
+      logger.info(`Адрес обновлен: ${currentAddress}`);
+      bot.sendMessage(chatId, 'Адрес записан.');
+      clearTimeout(addressTimeout);
+      clearTimeout(cancelTimeout);
+      isWaitingForAddress = false;
+      bot.off('message', addressListener); // Отключаем обработчик
+    };
+
+    bot.on('message', addressListener); // Слушаем все входящие сообщения
+
+    // Напоминание админу через 5 минут
+    let addressTimeout = setTimeout(() => {
+      bot.sendMessage(
+        chatId,
+        `@${tag} ${userName}, напомню, нужно указать адрес!`
+      );
+    }, 5 * 60 * 1000); // Напоминание через 5 минут
+
+    let cancelTimeout = setTimeout(() => {
+      bot.sendMessage(chatId, 'Время вышло, команда /adress отменена.');
+      isWaitingForAddress = false;
+      bot.off('message', addressListener); // Сбрасываем флаг
+    }, 1 * 60 * 1000); // Отмена через 10 минут
   }
 });
 
 // Автоматическое открытие Понедельник
-schedule.scheduleJob({ dayOfWeek: 1, hour: 10, minute: 30 }, () => {
+schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 00 }, () => {
   const NextWednesday = getNextWednesday();
   logger.info(
     'Выполнение запланированной задачи: автоматическое открытие набора'
@@ -718,7 +760,7 @@ schedule.scheduleJob({ dayOfWeek: 1, hour: 10, minute: 30 }, () => {
   bot
     .sendMessage(
       groupChatId,
-      `Набор на среду <b>${NextWednesday}</b> открыт! Записывайтесь и зовите друзей!`,
+      `Набор на Среду - <b>${NextWednesday}</b> открыт! Записывайтесь и зовите друзей!`,
       { parse_mode: 'HTML' }
     )
     .catch((err) => {
@@ -793,12 +835,11 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 22, minute: 30 }, () => {
   logger.info('Выполнение запланированной задачи: сброс состава');
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
-  const NextWednesday = getNextWednesday(); // Получаем следующую среду
-  const formattedDate = format(NextWednesday, 'dd-MM-yyyy');
+  const nextThursday = getNextThursday(); // Получаем следующую четверг
   bot
     .sendMessage(
       groupChatId,
-      `Состав был сброшен! Следующий набор откроется в четверг ${formattedDate} в 10:30.`
+      `Состав был сброшен! Следующий набор откроется в четверг ${nextThursday} в 10:30.`
     )
     .catch((err) => {
       logger.error(
@@ -807,9 +848,9 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 22, minute: 30 }, () => {
     });
 });
 
-// Автоматическое открытие Среда
+// Автоматическое открытие Четверг
 schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
-  const nextThursday = getNextThursday();
+  const nextFriday = getNextFriday();
   logger.info(
     'Выполнение запланированной задачи: автоматическое открытие набора'
   );
@@ -818,7 +859,7 @@ schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
   bot
     .sendMessage(
       groupChatId,
-      `Набор на пятницу <b>${nextThursday}</b> открыт! Записывайтесь и зовите друзей!`,
+      `Набор на пятницу <b>${nextFriday}</b> открыт! Записывайтесь и зовите друзей!`,
       { parse_mode: 'HTML' }
     )
     .catch((err) => {
@@ -894,11 +935,10 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
   isRecruitmentOpen = false;
   updateParticipantCount(groupChatId);
   const nextMonday = getNextMonday(); // Получаем следующую среду
-  const formattedDate = format(nextMonday, 'dd-MM-yyyy');
   bot
     .sendMessage(
       groupChatId,
-      `Состав был сброшен! Следующий набор откроется в понедельник ${formattedDate} в 12:00.`
+      `Состав был сброшен! Следующий набор откроется в понедельник ${nextMonday} в 12:00.`
     )
     .catch((err) => {
       logger.error(
