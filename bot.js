@@ -2,6 +2,7 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const { nextWednesday, format, nextMonday, nextThursday } = require('date-fns');
+const { ru } = require('date-fns/locale');
 require('dotenv').config();
 const logger = require('./logger');
 const schedule = require('node-schedule');
@@ -10,7 +11,7 @@ const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = -1002050996488;
+let groupChatId = -1002319959146;
 let currentAddress = '';
 let isRecruitmentOpen = false;
 let lastAnnouncedCount = 0;
@@ -675,14 +676,41 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
       });
     } else {
       isRecruitmentOpen = false;
-      const nextWednesday = getNextWednesday(); // Получаем следующую среду
-      const formattedDate = format(nextWednesday, 'yyyy-MM-dd');
       updateParticipantCount(chatId);
       logger.info(`${userName} закрыл набор вручную`);
+
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 - воскресенье, 1 - понедельник, ..., 6 - суббота
+      const hour = now.getHours();
+
+      let nextRecruitmentDate;
+      let nextRecruitmentTime;
+
+      if (
+        (dayOfWeek === 1 && hour >= 16) ||
+        dayOfWeek === 2 ||
+        dayOfWeek === 3
+      ) {
+        // Понедельник после 16:00, вторник или среда → следующий набор в четверг в 10:30
+        nextRecruitmentDate = nextThursday(now);
+        nextRecruitmentTime = '10:30';
+      } else if (
+        dayOfWeek === 4 ||
+        dayOfWeek === 5 ||
+        dayOfWeek === 6 ||
+        dayOfWeek === 0
+      ) {
+        // Четверг, пятница, суббота, воскресенье → следующий набор в среду, начнется в понедельник в 12:00
+        nextRecruitmentDate = nextMonday(now);
+        nextRecruitmentTime = '12:00';
+      }
+
+      const formattedDate = format(nextRecruitmentDate, 'dd.MM.yyyy');
+
       bot
         .sendMessage(
           chatId,
-          `Сбор завершён! Следующий набор будет ${formattedDate}.`
+          `Сбор завершён! Следующий набор будет ${formattedDate}, начнется в ${nextRecruitmentTime}.`
         )
         .catch((err) => {
           logger.error(
@@ -692,6 +720,12 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     }
   } else if (command === 'adress') {
     logger.info(`${userName} вызвал команду /adress`);
+
+    // if (!isRecruitmentOpen) {
+    //     bot.sendMessage(chatId, 'Сейчас нельзя установить адрес, так как набор закрыт.');
+    //     return;
+    // }
+
     if (member.status !== 'creator' && member.status !== 'administrator') {
       bot.sendMessage(chatId, 'Нет');
       return;
@@ -704,54 +738,63 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
       );
       return;
     }
+
     isWaitingForAddress = true;
     bot.sendMessage(chatId, 'Введите адрес');
 
     const adminId = msg.from.id;
 
     const addressListener = (response) => {
-      // Игнорируем сообщения от всех, кроме администратора
-      if (response.from.id !== adminId && isWaitingForAddress === true) return;
+      if (response.from.id !== adminId || !isWaitingForAddress) return;
 
       if (response.text.toLowerCase() === 'отмена') {
         bot.sendMessage(chatId, 'Команда отменена. Запустите команду заново.');
-        learTimeout(addressTimeout);
+        clearTimeout(addressTimeout);
         clearTimeout(cancelTimeout);
         bot.off('message', addressListener);
-        isWaitingForAddress = false; // Отключаем обработчик
+        isWaitingForAddress = false;
         return;
       }
 
       currentAddress = response.text;
       logger.info(`Адрес обновлен: ${currentAddress}`);
-      bot.sendMessage(chatId, 'Адрес записан.');
+
+      // Закрепляем сообщение пользователя с адресом
+      bot
+        .sendMessage(chatId, `Адрес: ${currentAddress}`)
+        .then((sentMessage) => {
+          bot.pinChatMessage(chatId, sentMessage.message_id);
+        })
+        .catch((err) =>
+          logger.error(`Ошибка при закреплении сообщения: ${err.message}`)
+        );
+
       clearTimeout(addressTimeout);
       clearTimeout(cancelTimeout);
       isWaitingForAddress = false;
-      bot.off('message', addressListener); // Отключаем обработчик
+      bot.off('message', addressListener);
     };
 
-    bot.on('message', addressListener); // Слушаем все входящие сообщения
+    bot.on('message', addressListener);
 
-    // Напоминание админу через 5 минут
     let addressTimeout = setTimeout(() => {
       bot.sendMessage(
         chatId,
         `@${tag} ${userName}, напомню, нужно указать адрес!`
       );
-    }, 5 * 60 * 1000); // Напоминание через 5 минут
+    }, 5 * 60 * 1000);
 
     let cancelTimeout = setTimeout(() => {
       bot.sendMessage(chatId, 'Время вышло, команда /adress отменена.');
       isWaitingForAddress = false;
-      bot.off('message', addressListener); // Сбрасываем флаг
-    }, 1 * 60 * 1000); // Отмена через 10 минут
+      bot.off('message', addressListener);
+    }, 10 * 60 * 1000);
   }
 });
 
 // Автоматическое открытие Понедельник
 schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 0 }, () => {
-  const NextWednesday = getNextWednesday();
+  const nextWednesdayOpen = getNextWednesday();
   logger.info(
     'Выполнение запланированной задачи: автоматическое открытие набора'
   );
@@ -760,7 +803,7 @@ schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 0 }, () => {
   bot
     .sendMessage(
       groupChatId,
-      `Набор на Среду - <b>${NextWednesday}</b> открыт! Записывайтесь и зовите друзей!`,
+      `Набор на <b>${nextWednesdayOpen}</b> открыт! Записывайтесь и зовите друзей!`,
       { parse_mode: 'HTML' }
     )
     .catch((err) => {
@@ -859,7 +902,7 @@ schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
   bot
     .sendMessage(
       groupChatId,
-      `Набор на пятницу <b>${nextFriday}</b> открыт! Записывайтесь и зовите друзей!`,
+      `Набор на <b>${nextFriday}</b> открыт! Записывайтесь и зовите друзей!`,
       { parse_mode: 'HTML' }
     )
     .catch((err) => {
