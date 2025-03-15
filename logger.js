@@ -13,7 +13,20 @@ const logTransport = new DailyRotateFile({
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({
+      format: () => {
+        const now = new Date().toLocaleString('ru-RU', {
+          timeZone: 'Europe/Moscow',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        return now.replace(',', ''); // Убираем лишнюю запятую после даты
+      },
+    }),
     winston.format.printf(
       ({ timestamp, level, message }) =>
         `[${timestamp}] ${level.toUpperCase()}: ${message}`

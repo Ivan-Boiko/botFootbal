@@ -1,7 +1,13 @@
 'use strict';
 
 const TelegramBot = require('node-telegram-bot-api');
-const { nextWednesday, format, nextMonday, nextThursday } = require('date-fns');
+const {
+  nextWednesday,
+  format,
+  nextMonday,
+  nextThursday,
+  nextFriday,
+} = require('date-fns');
 const { ru } = require('date-fns/locale');
 require('dotenv').config();
 const logger = require('./logger');
@@ -19,6 +25,16 @@ let isWaitingForAddress = false;
 let participants = {};
 logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
 
+const dayCases = {
+  понедельник: 'Понедельник',
+  вторник: 'Вторник',
+  среда: 'Среду',
+  четверг: 'Четверг',
+  пятница: 'Пятницу',
+  суббота: 'Субботу',
+  воскресенье: 'Воскресенье',
+};
+
 function getNextMonday() {
   return getNextFormattedDate(nextMonday, 'Следующий понедельник');
 }
@@ -30,6 +46,7 @@ function getNextWednesday() {
 function getNextThursday() {
   return getNextFormattedDate(nextThursday, 'Следующий четверг');
 }
+
 function getNextFriday() {
   return getNextFormattedDate(nextFriday, 'Следующая пятница');
 }
@@ -37,9 +54,14 @@ function getNextFriday() {
 function getNextFormattedDate(nextDayFunction, label) {
   const today = new Date();
   const nextDay = nextDayFunction(today);
-  let formattedDate = format(nextDay, 'eeee, dd.MM.yyyy HH:mm', { locale: ru });
+  let formattedDate = format(nextDay, 'eeee, dd.MM.yyyy', { locale: ru });
   formattedDate =
     formattedDate.charAt(0).toUpperCase() + formattedDate.slice(1);
+
+  const dayName = formattedDate.split(',')[0]; // Берём название дня
+  const correctedDay = dayCases[dayName.toLowerCase()] || dayName; // Подставляем нужное слово
+
+  formattedDate = formattedDate.replace(dayName, correctedDay);
   logger.info(`${label}: ${formattedDate}`);
   return formattedDate;
 }
@@ -793,7 +815,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
 });
 
 // Автоматическое открытие Понедельник
-schedule.scheduleJob({ dayOfWeek: 1, hour: 12, minute: 0 }, () => {
+schedule.scheduleJob({ dayOfWeek: 1, hour: 14, minute: 0 }, () => {
   const nextWednesdayOpen = getNextWednesday();
   logger.info(
     'Выполнение запланированной задачи: автоматическое открытие набора'
@@ -990,7 +1012,7 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
     });
 });
 
-schedule.scheduleJob(new Date(Date.now() + 5 * 60 * 1000), () => {
+schedule.scheduleJob(new Date(Date.now() + 1 * 60 * 1000), () => {
   logger.info('Бот запущен и готов к работе');
 
   bot.sendMessage(groupChatId, 'Бот запущен и готов к работе.').catch((err) => {
