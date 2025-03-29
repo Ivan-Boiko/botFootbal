@@ -17,7 +17,7 @@ const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = -1002319959146;
+let groupChatId = -1002050996488;
 let currentAddress = '';
 let isRecruitmentOpen = false;
 let lastAnnouncedCount = 0;
@@ -243,18 +243,21 @@ function updateParticipantCount(chatId) {
     statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}`; // Жирный заголовок
   }
 
-  if (totalParticipants >= 15 && totalParticipants !== lastAnnouncedCount) {
+  if (totalParticipants > 15 && totalParticipants !== lastAnnouncedCount) {
     lastAnnouncedCount = totalParticipants; // Обновляем последнее объявленное количество
     logger.info(`Достигнуто ${totalParticipants} участников.`);
-    bot
-      .sendMessage(
-        chatId,
-        `<b>Внимание,количество участников составляет более 15 человек!</b>`,
-        { parse_mode: 'HTML' }
-      )
-      .catch((err) => {
-        logger.error(`Ошибка при отправке уведомления: ${err.message}`);
-      });
+
+    setTimeout(() => {
+      bot
+        .sendMessage(
+          chatId,
+          `<b>Внимание, количество участников составляет более 15 человек!</b>`,
+          { parse_mode: 'HTML' }
+        )
+        .catch((err) => {
+          logger.error(`Ошибка при отправке уведомления: ${err.message}`);
+        });
+    }, 5000);
   } else if (totalParticipants < 15) {
     lastAnnouncedCount = 0; // Если стало меньше 15, сбрасываем
   }
@@ -341,18 +344,18 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
       return;
     }
 
-    if (number > 5) {
-      logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
-      bot
-        .sendMessage(
-          chatId,
-          `${userName}, ты можешь призывать не больше 5 друзей`
-        )
-        .catch((err) => {
-          logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
-        });
-      return;
-    }
+    // if (number > 5) {
+    //   logger.warn(`${userName} пытается призвать более 5 друзей: ${number}`);
+    //   bot
+    //     .sendMessage(
+    //       chatId,
+    //       `${userName}, ты можешь призывать не больше 5 друзей`
+    //     )
+    //     .catch((err) => {
+    //       logger.error(`Ошибка при отправке предупреждения: ${err.message}`);
+    //     });
+    //   return;
+    // }
 
     if (participant.status === 'Готов') {
       if (number > 0) {
@@ -836,7 +839,7 @@ schedule.scheduleJob({ dayOfWeek: 1, hour: 14, minute: 0 }, () => {
 });
 
 //Тегаем участников
-schedule.scheduleJob({ dayOfWeek: 3, hour: 14, minute: 0 }, () => {
+schedule.scheduleJob({ dayOfWeek: 3, hour: 14, minute: 55 }, () => {
   logger.info(
     'Выполнение запланированной задачи: тегирование участников со статусом "Под вопросом"'
   );
