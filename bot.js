@@ -18,11 +18,14 @@ const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
 let groupChatId = -1002050996488;
-let currentAddress = '';
+let selectedAddress = '';
+let selectedTime = '';
 let isRecruitmentOpen = false;
 let lastAnnouncedCount = 0;
 let isWaitingForAddress = false;
 let participants = {};
+let addresses = ['Спортивная ул., 15', 'Ленина пр., 20', 'Парковая ул., 5'];
+// Функция для отправки сообщения с выбором времени
 logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
 
 const dayCases = {
@@ -263,8 +266,8 @@ function updateParticipantCount(chatId) {
   }
   let total = statusList + `<b>\nИтого:</b> ${totalParticipants}\n`;
 
-  if (currentAddress) {
-    total += `\n<b>Адрес:</b> ${currentAddress}`;
+  if (selectedAddress && selectedTime) {
+    total += `\n<b>Адрес и время :</b> ${selectedAddress} ${selectedTime}`;
   }
 
   logger.info(`Общее количество участников: ${totalParticipants}`);
@@ -681,6 +684,8 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     } else {
       isRecruitmentOpen = true;
       participants = {};
+      selectedAddress = '';
+      selectedTime = '';
       logger.info(`${userName} открыл набор вручную`);
       bot
         .sendMessage(
@@ -765,13 +770,14 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     }
 
     isWaitingForAddress = true;
-    bot.sendMessage(chatId, 'Введите адрес');
+    let response = 'Введите адрес или выберите из существующих:\n';
 
-    const adminId = msg.from.id;
+    addresses.forEach((address, index) => {
+      response += `${index + 1}. ${address}\n`;
+    });
+    bot.sendMessage(chatId, response);
 
     const addressListener = (response) => {
-      if (response.from.id !== adminId || !isWaitingForAddress) return;
-
       if (response.text.toLowerCase() === 'отмена') {
         bot.sendMessage(chatId, 'Команда отменена. Запустите команду заново.');
         clearTimeout(addressTimeout);
@@ -781,18 +787,52 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
         return;
       }
 
-      currentAddress = response.text;
-      logger.info(`Адрес обновлен: ${currentAddress}`);
-
-      // Закрепляем сообщение пользователя с адресом
-      bot
-        .sendMessage(chatId, `Адрес: ${currentAddress}`)
-        .then((sentMessage) => {
-          bot.pinChatMessage(chatId, sentMessage.message_id);
-        })
-        .catch((err) =>
-          logger.error(`Ошибка при закреплении сообщения: ${err.message}`)
+      const choice = parseInt(response.text);
+      if (!isNaN(choice) && choice >= 1 && choice <= addresses.length) {
+        selectedAddress = addresses[choice - 1];
+        bot.sendMessage(chatId, `Адрес установлен: ${selectedAddress}`);
+      } else {
+        selectedAddress = response.text;
+        bot.sendMessage(
+          chatId,
+          `Адрес установлен: ${selectedAddress}. Адресс будет добавлен в список позже`
         );
+        logger.info(`⚠️ Новый адрес, добавить вручную: ${selectedAddress}`);
+      }
+
+      isWaitingForAddress = false;
+      bot.off('message', addressListener);
+
+      const times = ['20:00', '20:30', '21:00', '21:30'];
+
+      let timeResponse = 'Выберите время начала матча:\n';
+      times.forEach((time, index) => {
+        timeResponse += `${index + 1}. ${time}\n`;
+      });
+      bot.sendMessage(chatId, timeResponse);
+
+      // Слушаем выбор времени
+      bot.once('message', (msg) => {
+        const choice = parseInt(msg.text);
+        if (choice >= 1 && choice <= times.length) {
+          selectedTime = times[choice - 1];
+          bot.sendMessage(chatId, `Время установлено: ${selectedTime}`);
+
+          // Закрепляем сообщение с выбранным адресом и временем
+          const finalMessage = `Адрес: ${selectedAddress}, Время: ${selectedTime}`;
+          bot
+            .sendMessage(chatId, finalMessage)
+            .then((sentMessage) => {
+              bot.pinChatMessage(chatId, sentMessage.message_id);
+            })
+            .catch((err) =>
+              console.error(`Ошибка при закреплении сообщения: ${err.message}`)
+            );
+        } else {
+          bot.sendMessage(chatId, 'Некорректный выбор времени.');
+        }
+      });
+      // Закрепляем сообщение пользователя с адресом
 
       clearTimeout(addressTimeout);
       clearTimeout(cancelTimeout);
@@ -825,6 +865,8 @@ schedule.scheduleJob({ dayOfWeek: 1, hour: 14, minute: 0 }, () => {
   );
   isRecruitmentOpen = true;
   participants = {};
+  selectedAddress = '';
+  selectedTime = '';
   bot
     .sendMessage(
       groupChatId,
@@ -881,7 +923,7 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 14, minute: 55 }, () => {
 });
 
 // Выводим список игроков перед футболом
-schedule.scheduleJob({ dayOfWeek: 3, hour: 19, minute: 30 }, () => {
+schedule.scheduleJob({ dayOfWeek: 0, hour: 0, minute: 58 }, () => {
   logger.info(
     'Выполнение запланированной задачи: отправка списка игроков перед футболом'
   );
@@ -924,6 +966,8 @@ schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
   );
   isRecruitmentOpen = true;
   participants = {};
+  selectedAddress = '';
+  selectedTime = '';
   bot
     .sendMessage(
       groupChatId,
