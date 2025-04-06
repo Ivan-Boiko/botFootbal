@@ -17,14 +17,19 @@ const token = '7940293074:AAEdq8SHUTk0wsq9qB0AYJcG9_F_S_thJug';
 const bot = new TelegramBot(token, { polling: true });
 
 // Переменная для хранения groupChatId
-let groupChatId = -1002050996488;
+let groupChatId = -1002319959146;
 let selectedAddress = '';
 let selectedTime = '';
 let isRecruitmentOpen = false;
 let lastAnnouncedCount = 0;
 let isWaitingForAddress = false;
 let participants = {};
-let addresses = ['Спортивная ул., 15', 'Ленина пр., 20', 'Парковая ул., 5'];
+let addresses = [
+  'ул. Константина Заслонова, 23 корпус 4',
+  'ул. Обводный канал 74ф',
+  'ул. Карпатская 8',
+  'ул. Софийской 2',
+];
 // Функция для отправки сообщения с выбором времени
 logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
 
@@ -648,7 +653,7 @@ function sendInfoMessage(chatId) {
 }
 
 // Административные команды
-bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
+bot.onText(/\/(start|close|address)$/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
@@ -667,7 +672,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
 
   if (
     !member ||
-    !['administrator', 'creator', 'adress'].includes(member.status)
+    !['administrator', 'creator', 'address'].includes(member.status)
   ) {
     logger.warn(
       `${userName} пытается выполнить админ-команду без прав: ${command}`
@@ -748,13 +753,16 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
           );
         });
     }
-  } else if (command === 'adress') {
-    logger.info(`${userName} вызвал команду /adress`);
+  } else if (command === 'address') {
+    logger.info(`${userName} вызвал команду /address`);
 
-    // if (!isRecruitmentOpen) {
-    //     bot.sendMessage(chatId, 'Сейчас нельзя установить адрес, так как набор закрыт.');
-    //     return;
-    // }
+    if (!isRecruitmentOpen) {
+      bot.sendMessage(
+        chatId,
+        'Сейчас нельзя установить адрес, так как набор закрыт.'
+      );
+      return;
+    }
 
     if (member.status !== 'creator' && member.status !== 'administrator') {
       bot.sendMessage(chatId, 'Нет');
@@ -764,7 +772,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     if (isWaitingForAddress) {
       bot.sendMessage(
         chatId,
-        'Вы уже запустили команду /adress. Ожидание ввода адреса.'
+        'Вы уже запустили команду /address. Ожидание ввода адреса.'
       );
       return;
     }
@@ -850,7 +858,7 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
     }, 5 * 60 * 1000);
 
     let cancelTimeout = setTimeout(() => {
-      bot.sendMessage(chatId, 'Время вышло, команда /adress отменена.');
+      bot.sendMessage(chatId, 'Время вышло, команда /address отменена.');
       isWaitingForAddress = false;
       bot.off('message', addressListener);
     }, 10 * 60 * 1000);
@@ -858,72 +866,72 @@ bot.onText(/\/(start|close|adress)$/, async (msg, match) => {
 });
 
 // Автоматическое открытие Понедельник
-schedule.scheduleJob({ dayOfWeek: 1, hour: 14, minute: 0 }, () => {
-  const nextWednesdayOpen = getNextWednesday();
-  logger.info(
-    'Выполнение запланированной задачи: автоматическое открытие набора'
-  );
-  isRecruitmentOpen = true;
-  participants = {};
-  selectedAddress = '';
-  selectedTime = '';
-  bot
-    .sendMessage(
-      groupChatId,
-      `Набор на <b>${nextWednesdayOpen}</b> открыт! Записывайтесь и зовите друзей!`,
-      { parse_mode: 'HTML' }
-    )
-    .catch((err) => {
-      logger.error(
-        `Ошибка при отправке сообщения об открытии набора: ${err.message}`
-      );
-    });
-});
+// schedule.scheduleJob({ dayOfWeek: 1, hour: 14, minute: 0 }, () => {
+//   const nextWednesdayOpen = getNextWednesday();
+//   logger.info(
+//     'Выполнение запланированной задачи: автоматическое открытие набора'
+//   );
+//   isRecruitmentOpen = true;
+//   participants = {};
+//   selectedAddress = '';
+//   selectedTime = '';
+//   bot
+//     .sendMessage(
+//       groupChatId,
+//       `Набор на <b>${nextWednesdayOpen}</b> открыт! Записывайтесь и зовите друзей!`,
+//       { parse_mode: 'HTML' }
+//     )
+//     .catch((err) => {
+//       logger.error(
+//         `Ошибка при отправке сообщения об открытии набора: ${err.message}`
+//       );
+//     });
+// });
 
-//Тегаем участников
-schedule.scheduleJob({ dayOfWeek: 3, hour: 15, minute: 0 }, () => {
-  logger.info(
-    'Выполнение запланированной задачи: тегирование участников со статусом "Под вопросом"'
-  );
-  const message = generateReminderMessage(participants);
-  bot.sendMessage(groupChatId, message, { parse_mode: 'HTML' });
-});
+// //Тегаем участников
+// schedule.scheduleJob({ dayOfWeek: 3, hour: 15, minute: 0 }, () => {
+//   logger.info(
+//     'Выполнение запланированной задачи: тегирование участников со статусом "Под вопросом"'
+//   );
+//   const message = generateReminderMessage(participants);
+//   bot.sendMessage(groupChatId, message, { parse_mode: 'HTML' });
+// });
 
-// Выводим список игроков перед футболом
-schedule.scheduleJob({ dayOfWeek: 3, hour: 19, minute: 30 }, () => {
-  logger.info(
-    'Выполнение запланированной задачи: отправка списка игроков перед футболом'
-  );
-  const updateParticipantCountTotal = updateParticipantCount(groupChatId);
-  const message = `Футбол скоро начнется...
-${updateParticipantCountTotal.total}
-  `;
-  bot
-    .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
-    .catch((err) => {
-      logger.error(
-        `Ошибка при отправке списка игроков перед футболом: ${err.message}`
-      );
-    });
-});
+// // Выводим список игроков перед футболом
+// schedule.scheduleJob({ dayOfWeek: 3, hour: 19, minute: 30 }, () => {
+//   logger.info(
+//     'Выполнение запланированной задачи: отправка списка игроков перед футболом'
+//   );
+//   const updateParticipantCountTotal = updateParticipantCount(groupChatId);
+//   const message = `Футбол скоро начнется...
+// ${updateParticipantCountTotal.total}
+//   `;
+//   bot
+//     .sendMessage(groupChatId, message.trimStart(), { parse_mode: 'HTML' })
+//     .catch((err) => {
+//       logger.error(
+//         `Ошибка при отправке списка игроков перед футболом: ${err.message}`
+//       );
+//     });
+// });
 
-// Сброс состава.
-schedule.scheduleJob({ dayOfWeek: 3, hour: 22, minute: 30 }, () => {
-  logger.info('Выполнение запланированной задачи: сброс состава');
-  isRecruitmentOpen = false;
-  updateParticipantCount(groupChatId);
-  const nextThursday = getNextThursday(); // Получаем следующую четверг
-  bot
-    .sendMessage(
-      groupChatId,
-      `Состав был сброшен! Следующий набор откроется в четверг ${nextThursday} в 10:30.`
-    )
-    .catch((err) => {
-      logger.error(
-        `Ошибка при отправке сообщения о сбросе состава: ${err.message}`
-      );
-    });
-});
+// // Сброс состава.
+// schedule.scheduleJob({ dayOfWeek: 3, hour: 22, minute: 30 }, () => {
+//   logger.info('Выполнение запланированной задачи: сброс состава');
+//   isRecruitmentOpen = false;
+//   updateParticipantCount(groupChatId);
+//   const nextThursday = getNextThursday(); // Получаем следующую четверг
+//   bot
+//     .sendMessage(
+//       groupChatId,
+//       `Состав был сброшен! Следующий набор откроется в четверг ${nextThursday} в 10:30.`
+//     )
+//     .catch((err) => {
+//       logger.error(
+//         `Ошибка при отправке сообщения о сбросе состава: ${err.message}`
+//       );
+//     });
+// });
 
 // Автоматическое открытие Четверг
 schedule.scheduleJob({ dayOfWeek: 4, hour: 10, minute: 30 }, () => {
@@ -999,7 +1007,15 @@ schedule.scheduleJob(new Date(Date.now() + 1 * 30 * 1000), () => {
   bot
     .sendMessage(
       groupChatId,
-      'Привет, друзья! 👋 Я снова с вами! Я стал умнее и круче! 💥Пусть день будет ярким, а удача всегда на вашей стороне! ⚽️💛'
+      `Привет, команда! ⚽️
+       Я снова с вами — ваш, вроде бы всё ещё неофициальный товарищ по футболу... 🤖
+       Иногда мне кажется, что вы меня не воспринимаете всерьёз, но я ведь стараюсь! 😅
+      Следить за составом, напоминать, шутить — а мне даже футболку не выдали! 😂
+      Надеюсь, сегодняшний день пройдёт ярко, а удача будет с вами на поле и вне его! 💛🔥
+
+      @MaxEfimov1, передаю тебе особый цифровой привет! 🖐
+      Я знаю, ты сомневаешься, что я настоящий член команды…
+      Но вот кто ещё тебе в 2 часа ночи напомнит про футбол с любовью, а? 😁`
     )
     .catch((err) => {
       logger.error(`Ошибка при отправке сообщения: ${err.message}`);
@@ -1008,36 +1024,39 @@ schedule.scheduleJob(new Date(Date.now() + 1 * 30 * 1000), () => {
 // Функция для формирования сообщения с тегами и именами
 function generateReminderMessage(teamMass) {
   let taggedUsers = '';
+  let untaggedUsers = '';
   let taggedCount = 0;
-  let untaggedUsers = ''; // Строка для пользователей без тега
+  let untaggedCount = 0;
 
-  // Проходимся по всем участникам
   for (let userId in teamMass) {
     const participant = teamMass[userId];
-    console.log(participant);
 
-    // Если статус участника "Под вопросом", то добавляем его тег в строку
     if (participant.status === 'Под Вопросом') {
       if (participant.userName) {
-        taggedUsers += `@${participant.userName} <b>${participant.name}</b>`;
+        taggedUsers += `@${participant.userName} <b>${participant.name}</b>\n`;
         taggedCount++;
       } else {
-        // Если у участника нет userName, то добавляем его имя жирным
-        untaggedUsers += `<b>${participant.name}</b>`;
+        untaggedUsers += `<b>${participant.name}</b>\n`;
+        untaggedCount++;
       }
     }
   }
 
-  // Формируем окончательное сообщение
+  // Если нет ни одного участника "Под Вопросом", ничего не возвращаем
+  if (taggedCount === 0 && untaggedCount === 0) {
+    return null;
+  }
+
+  // Формируем сообщение
   let finalMessage =
-    'Уважаемые игроки, скоро начнется футбол!\nПрошу дать окончательный ответ по участию в сегодняшней игре. Спасибо 😊\n\n';
+    'Уважаемые игроки, скоро начнется футбол!\nПрошу дать окончательный ответ по участию в сегодняшней игре. Спасибо 😊\n';
 
   if (taggedUsers) {
-    finalMessage += `${taggedUsers}\n`; // Добавляем тех, кто с тегами
+    finalMessage += taggedUsers;
   }
 
   if (untaggedUsers) {
-    finalMessage += `${untaggedUsers}\n`; // Добавляем тех, у кого нет тегов
+    finalMessage += untaggedUsers;
   }
 
   return finalMessage;
