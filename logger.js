@@ -7,7 +7,7 @@ const logTransport = new DailyRotateFile({
   datePattern: 'YYYY-MM-DD',
   zippedArchive: false,
   maxSize: '5m',
-  maxFiles: '7d',
+  maxFiles: '5d',
 });
 
 const logger = winston.createLogger({

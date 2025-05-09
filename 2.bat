@@ -1,3 +1,4 @@
 @echo off
-node "C:\botFootbal\bot.js"
+cd /d "C:\botFootbal"
+node bot.js
 exit
