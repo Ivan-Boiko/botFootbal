@@ -636,7 +636,7 @@ bot.onText(/Игроки$/, (msg) => {
 bot.onText(/Дата$/, (msg) => {
   const chatId = msg.chat.id;
   const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
-  const nextThursday = getNextThursday(); // Уже отформатированная дата набора (среда)
+  const nextFriday = getNextFriday(); // Уже отформатированная дата набора (среда)
   const nextWednesday = getNextWednesday(); // Уже отформатированная дата игры (пятница)
 
   logger.info(
@@ -646,8 +646,8 @@ bot.onText(/Дата$/, (msg) => {
   // Создаем сообщение с информацией о датах и списком игроков
   const message = `
 📅 <b>Ближайшие даты:</b>
-🔹 <b>Набор игроков:</b> ${nextThursday} 13:00
-🔹 <b>Дата игры:</b> ${nextWednesday} 20:30
+🔹 <b>Набор игроков: в </b>  ${nextWednesday} 13:00
+🔹 <b>Дата игры:</b> в ${nextFriday} 20:30
   `;
   bot.sendMessage(chatId, message, {
     parse_mode: 'HTML',
@@ -1001,13 +1001,4 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
 
 schedule.scheduleJob(new Date(Date.now() + 1 * 30 * 1000), () => {
   logger.info('Бот запущен и готов к работе');
-
-  const infoMessages = `Всем здравия!
-  Снова с вами, слушаю чат, готов поддерживать движ.`;
-
-  bot.sendMessage(chatId, infoMessages).catch((err) => {
-    logger.error(
-      `Ошибка при отправке информационного сообщения: ${err.message}`
-    );
-  });
 });
