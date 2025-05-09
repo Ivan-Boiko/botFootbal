@@ -643,11 +643,6 @@ bot.onText(/Дата$/, (msg) => {
     `${userName} (ID: ${msg.from.id}) запросил полный список игроков`
   );
 
-  if (!isRecruitmentOpen) {
-    handleClosedRecruitment(chatId, userName);
-    return;
-  }
-
   // Создаем сообщение с информацией о датах и списком игроков
   const message = `
 📅 <b>Ближайшие даты:</b>
@@ -1007,10 +1002,10 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
 schedule.scheduleJob(new Date(Date.now() + 1 * 30 * 1000), () => {
   logger.info('Бот запущен и готов к работе');
 
-  const infoMessage = `Всем здравия!
+  const infoMessages = `Всем здравия!
   Снова с вами, слушаю чат, готов поддерживать движ.`;
 
-  bot.sendMessage(chatId, infoMessage).catch((err) => {
+  bot.sendMessage(chatId, infoMessages).catch((err) => {
     logger.error(
       `Ошибка при отправке информационного сообщения: ${err.message}`
     );
