@@ -10,34 +10,35 @@ const {
 } = require('date-fns');
 require('dotenv').config({ path: __dirname + '/.env' });
 const fs = require('fs');
+const path = require('path');
 const PARTICIPANTS_FILE = 'base/participants.json';
-
+const STATE_DIR = path.join(__dirname, 'state');
+const STATE_FILE = path.join(STATE_DIR, 'state.json');
+if (!fs.existsSync(STATE_DIR)) {
+  // Проверяем наличие папки, создаём если нет
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+}
+const BOT_START_TIMESTAMP = Math.floor(Date.now() / 1000);
 const { ru } = require('date-fns/locale');
 const logger = require('./logger');
 const schedule = require('node-schedule');
-// Токен бота - из переменных окружения для безопасности
-const token = process.env.TELEGRAM_BOT_TOKEN;
+const token = process.env.TELEGRAM_BOT_TOKEN; // Токен бота - из переменных окружения для безопасности
 const bot = new TelegramBot(token, { polling: true });
-console.log('TOKEN:', token);
-
-// Переменная для хранения groupChatId
-let groupChatId = parseInt(process.env.GROUP_CHAT_ID);
-console.log('GROUP_CHAT_ID:', groupChatId);
+let state = loadState();
+let groupChatId = parseInt(process.env.GROUP_CHAT_ID); // Переменная для хранения groupChatId
 let selectedAddress = '';
 let selectedTime = '';
-let isRecruitmentOpen = false;
+let isRecruitmentOpen = state.isRecruitmentOpen || false;
 let lastAnnouncedCount = 0;
 let isWaitingForAddress = false;
-let participants = {};
+let participants = loadParticipants() || {};
 let addresses = [
   'ул. Константина Заслонова, 23 корпус 4',
   'ул. Обводный канал 74ф',
   'ул. Карпатская 8',
   'ул. Софийской 2',
 ];
-// Функция для отправки сообщения с выбором времени
 logger.info(`Бот инициализирован. Установлен чат группы ${groupChatId}`);
-
 const dayCases = {
   понедельник: 'Понедельник',
   вторник: 'Вторник',
@@ -48,7 +49,26 @@ const dayCases = {
   воскресенье: 'Воскресенье',
 };
 
-// Функция загрузки
+// Функция загрузки состояния флага открытия состава
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const data = fs.readFileSync(STATE_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    logger.error('Ошибка чтения state.json: ' + err.message);
+  }
+  return { isRecruitmentOpen: false };
+}
+function saveState(state) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (err) {
+    logger.error('Ошибка записи state.json: ' + err.message);
+  }
+}
+
 function loadParticipants() {
   try {
     if (fs.existsSync(PARTICIPANTS_FILE)) {
@@ -59,9 +79,8 @@ function loadParticipants() {
     logger.error('Ошибка чтения состава: ' + err.message);
   }
   return {};
-}
+} // Функция загрузкиигроков
 
-// Функция сохранения
 function saveParticipants(participants) {
   try {
     fs.writeFileSync(
@@ -72,6 +91,11 @@ function saveParticipants(participants) {
   } catch (err) {
     logger.error('Ошибка записи состава: ' + err.message);
   }
+}
+
+// Проверка, стоит ли обрабатывать сообщение
+function isFreshMessage(msg) {
+  return msg.date >= BOT_START_TIMESTAMP;
 }
 
 function getNextWednesday() {
@@ -130,7 +154,6 @@ function getNextFormattedDate(nextDayFunction, label) {
   return formattedDate;
 }
 
-// Слушаем сообщения и сохраняем chatId
 bot.on('message', (msg) => {
   if (msg.from && msg.text) {
     logger.info(
@@ -148,7 +171,7 @@ bot.on('message', (msg) => {
         logger.error(`Ошибка при отправке сообщения: ${err.message}`);
       });
   }
-});
+}); // Слушаем сообщения и сохраняем chatId
 
 function handleChatMemberEvents(msg) {
   const chatId = msg.chat.id;
@@ -250,7 +273,7 @@ function getParticipantStatus(participant, userName) {
 // Функция обновления общего количества участников
 function updateParticipantCount(chatId) {
   logger.info(`Обновление списка участников для чата ${chatId}`);
-  let statusList = `\n\n⚽<b>Состав: \n\n</b>`; // Жирный заголовок
+  let statusList = `\n\n<b>Состав: \n\n</b>`; // Жирный заголовок
 
   let totalParticipants = 0;
   let readyCounter = 0; // Счётчик для участников в составе
@@ -304,7 +327,7 @@ function updateParticipantCount(chatId) {
   }
 
   if (notParticipatingList) {
-    statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}`; // Жирный заголовок
+    statusList += `<b>Не участвуют, но позвали друзей:</b>\n${notParticipatingList}\n`; // Жирный заголовок
   }
 
   if (totalParticipants > 15 && totalParticipants !== lastAnnouncedCount) {
@@ -325,7 +348,7 @@ function updateParticipantCount(chatId) {
   } else if (totalParticipants < 15) {
     lastAnnouncedCount = 0; // Если стало меньше 15, сбрасываем
   }
-  let total = statusList + `<b>\nИтого:</b> ${totalParticipants}\n`;
+  let total = statusList + `<b>Итого:</b> ${totalParticipants}\n`;
 
   if (selectedAddress && selectedTime) {
     total += `\n<b>Адрес и время :</b> ${selectedAddress} ${selectedTime}`;
@@ -335,7 +358,7 @@ function updateParticipantCount(chatId) {
 
   const savePeople = saveParticipants(participants);
   logger.info(`Файл состава перезаписан: ${savePeople}`);
-  
+
   return { total, totalParticipants };
 }
 
@@ -362,7 +385,7 @@ bot.onText(/(\+|-|\?)(\d+)?/, (msg, match) => {
   logger.info(
     `Обработка команды ${symbol}${number} от ${userName} (ID: ${userId})`
   );
-
+  if (!isFreshMessage(msg)) return;
   // Создаём участника, если он ещё не зарегистрирован
   if (!participants[userId]) {
     logger.info(`Создание нового участника: ${userName} (ID: ${userId})`);
@@ -638,7 +661,7 @@ bot.onText(/Состав$/, (msg) => {
   const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
 
   logger.info(`${userName} (ID: ${msg.from.id}) запросил информацию о составе`);
-
+  if (!isFreshMessage(msg)) return;
   if (!pattern.test(msg.text.trim())) {
     return; // Игнорируем, если сообщение не соответствует формату
   }
@@ -672,19 +695,22 @@ bot.onText(/Игроки$/, (msg) => {
   logger.info(
     `${userName} (ID: ${msg.from.id}) запросил полный список игроков`
   );
-
+  if (!isFreshMessage(msg)) return;
   if (!isRecruitmentOpen) {
     handleClosedRecruitment(chatId, userName);
     return;
   }
 
   const updateParticipantCountTotal = updateParticipantCount(chatId);
+  if (updateParticipantCountTotal.totalParticipants === 0) {
+    bot.sendMessage(chatId, 'Пока никто не записался.');
+    return;
+  }
 
   // Создаем сообщение с информацией о датах и списком игроков
   const message = `
   ${updateParticipantCountTotal.total}
   `;
-
   bot.sendMessage(chatId, message, {
     parse_mode: 'HTML',
   });
@@ -699,7 +725,7 @@ bot.onText(/Дата$/, (msg) => {
   logger.info(
     `${userName} (ID: ${msg.from.id}) запросил полный список игроков`
   );
-
+  if (!isFreshMessage(msg)) return;
   // Создаем сообщение с информацией о датах и списком игроков
   const message = `
 📅 <b>Ближайшие даты:</b>
@@ -715,6 +741,7 @@ bot.onText(/Дата$/, (msg) => {
 bot.onText(/Инфо$/, (msg) => {
   const chatId = msg.chat.id;
   const userName = msg.from.first_name + ' ' + (msg.from.last_name || '');
+  if (!isFreshMessage(msg)) return;
   logger.info(
     `${userName} (ID: ${msg.from.id}) запросил информацию о командах`
   );
@@ -793,7 +820,7 @@ bot.onText(/\/(start|close|address)$/, async (msg, match) => {
   logger.info(
     `${userName} (ID: ${userId}) выполняет административную команду ${command}`
   );
-
+  if (!isFreshMessage(msg)) return;
   const member = await bot.getChatMember(chatId, userId).catch((err) => {
     logger.error(`Ошибка при получении информации о чате: ${err.message}`);
     'Ошибка при получении информации о чате:', err;
@@ -818,6 +845,8 @@ bot.onText(/\/(start|close|address)$/, async (msg, match) => {
       });
     } else {
       isRecruitmentOpen = true;
+      state.isRecruitmentOpen = isRecruitmentOpen;
+      saveState(state);
       participants = {};
       selectedAddress = '';
       selectedTime = '';
@@ -841,6 +870,8 @@ bot.onText(/\/(start|close|address)$/, async (msg, match) => {
       });
     } else {
       isRecruitmentOpen = false;
+      state.isRecruitmentOpen = isRecruitmentOpen;
+      saveState(state);
       updateParticipantCount(chatId);
       logger.info(`${userName} закрыл набор вручную`);
 
@@ -984,6 +1015,8 @@ schedule.scheduleJob({ dayOfWeek: 3, hour: 13, minute: 0 }, () => {
     'Выполнение запланированной задачи: автоматическое открытие набора'
   );
   isRecruitmentOpen = true;
+  state.isRecruitmentOpen = isRecruitmentOpen;
+  saveState(state);
   participants = {};
   selectedAddress = '';
   selectedTime = '';
@@ -1044,6 +1077,8 @@ schedule.scheduleJob({ dayOfWeek: 5, hour: 21, minute: 30 }, () => {
   const nextWednesday = getNextWednesday();
   logger.info('Выполнение запланированной задачи: сброс состава');
   isRecruitmentOpen = false;
+  state.isRecruitmentOpen = isRecruitmentOpen;
+  saveState(state);
   updateParticipantCount(groupChatId);
   bot
     .sendMessage(
